@@ -1,0 +1,191 @@
+import { Theme } from "theme.slint";
+
+// ----------------------------------------------------------
+// StatusDot
+// ----------------------------------------------------------
+export component StatusDot inherits Rectangle {
+    in property <string> state: "offline";
+
+    width: 8px;
+    height: 8px;
+    border-radius: 4px;
+
+    background: state == "ok" ? Theme.status-ok :
+                state == "warn" ? Theme.status-warn :
+                state == "error" ? Theme.status-error :
+                state == "active" ? Theme.status-active :
+                Theme.status-offline;
+
+    animate background { duration: 300ms; }
+}
+
+// ----------------------------------------------------------
+// SurfaceTile — home grid
+// ----------------------------------------------------------
+export component SurfaceTile inherits Rectangle {
+    in property <string> title: "";
+    in property <string> subtitle: "";
+    in property <string> glyph: "";
+    in property <string> status: "offline";
+    in property <bool> selected: false;
+    callback clicked;
+
+    border-radius: Theme.radius-lg;
+    border-width: 1px;
+    border-color: selected ? Theme.border-accent : Theme.border;
+    background: selected ? Theme.bg-elevated : Theme.bg-panel;
+
+    drop-shadow-blur: selected ? 20px : 0px;
+    drop-shadow-color: selected ? Theme.accent-glow : transparent;
+
+    animate border-color, background, drop-shadow-blur {
+        duration: 160ms;
+        easing: ease-out;
+    }
+
+    TouchArea {
+        clicked => { root.clicked(); }
+        mouse-cursor: pointer;
+
+        states [
+            hover when self.has-hover && !root.selected: {
+                root.background: Theme.bg-hover;
+                root.border-color: Theme.border-strong;
+            }
+        ]
+    }
+
+    VerticalLayout {
+        padding: Theme.space-20;
+        spacing: Theme.space-12;
+
+        HorizontalLayout {
+            alignment: center;
+
+            Text {
+                text: glyph;
+                font-size: 26px;
+                color: selected ? Theme.accent : Theme.text-secondary;
+                animate color { duration: 160ms; }
+            }
+
+            Rectangle { horizontal-stretch: 1; }
+
+            StatusDot {
+                state: status;
+            }
+        }
+
+        VerticalLayout {
+            spacing: 3px;
+
+            Text {
+                text: title;
+                font-size: 18px;
+                font-weight: 700;
+                color: Theme.text-primary;
+                font-family: Theme.font-sans;
+            }
+
+            Text {
+                text: subtitle;
+                font-size: 12px;
+                color: Theme.text-muted;
+                font-family: Theme.font-sans;
+            }
+        }
+    }
+}
+
+// ----------------------------------------------------------
+// TopBar
+// ----------------------------------------------------------
+export component TopBar inherits Rectangle {
+    in property <string> time-str: "00:00:00";
+    in property <string> op-name: "STANDBY";
+    in property <string> gps-status: "NO FIX";
+    in property <string> mesh-status: "OFFLINE";
+    in property <string> power-str: "—";
+
+    height: 44px;
+    background: Theme.bg-void;
+    border-width: 0 0 1px 0;
+    border-color: Theme.border;
+
+    HorizontalLayout {
+        padding-left: Theme.space-16;
+        padding-right: Theme.space-16;
+        spacing: Theme.space-16;
+        alignment: center;
+
+        Text {
+            text: "RVN";
+            font-size: 15px;
+            font-weight: 800;
+            color: Theme.accent;
+            font-family: Theme.font-mono;
+            letter-spacing: 3px;
+        }
+
+        RectDivider { }
+
+        Text {
+            text: op-name;
+            font-size: 12px;
+            color: Theme.text-muted;
+            font-family: Theme.font-mono;
+            letter-spacing: 1px;
+        }
+
+        Rectangle { horizontal-stretch: 1; }
+
+        HorizontalLayout {
+            spacing: Theme.space-12;
+            alignment: center;
+
+            DataPill { key: "GPS"; val: gps-status; }
+            DataPill { key: "MESH"; val: mesh-status; }
+            DataPill { key: "PWR"; val: power-str; }
+        }
+
+        RectDivider { }
+
+        Text {
+            text: time-str;
+            font-size: 14px;
+            font-weight: 600;
+            color: Theme.text-primary;
+            font-family: Theme.font-mono;
+        }
+    }
+}
+
+component DataPill inherits HorizontalLayout {
+    in property <string> key: "";
+    in property <string> val: "";
+
+    spacing: 5px;
+    alignment: center;
+
+    Text {
+        text: key;
+        font-size: 10px;
+        font-weight: 600;
+        color: Theme.text-faint;
+        font-family: Theme.font-mono;
+        letter-spacing: 0.5px;
+    }
+
+    Text {
+        text: val;
+        font-size: 12px;
+        color: Theme.text-secondary;
+        font-family: Theme.font-mono;
+    }
+}
+
+component RectDivider inherits Rectangle {
+    width: 1px;
+    height: 16px;
+    background: Theme.border;
+}

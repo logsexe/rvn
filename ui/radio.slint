@@ -1,0 +1,393 @@
+import { Theme } from "theme.slint";
+import { StatusDot } from "components.slint";
+
+// RADIO — receive-only SDR instrument
+
+export component RadioSurface inherits Rectangle {
+    in property <string> readiness: "offline";
+    in property <string> device: "—";
+    in property <string> freq: "—";
+    in property <string> sample-rate: "—";
+    in property <string> mode: "RECEIVE ONLY";
+    in property <bool> streaming: false;
+
+    callback close;
+    callback tune-up;
+    callback tune-down;
+    callback toggle-stream;
+
+    background: Theme.bg-void;
+
+    VerticalLayout {
+        padding: Theme.space-20;
+        spacing: Theme.space-16;
+
+        // Header
+        HorizontalLayout {
+            spacing: Theme.space-12;
+            alignment: center;
+
+            Text {
+                text: "RADIO";
+                font-size: 20px;
+                font-weight: 700;
+                color: Theme.accent;
+                font-family: Theme.font-mono;
+                letter-spacing: 2px;
+            }
+
+            Text {
+                text: "// SPECTRUM";
+                font-size: 12px;
+                color: Theme.text-faint;
+                font-family: Theme.font-mono;
+                vertical-alignment: center;
+            }
+
+            Rectangle { horizontal-stretch: 1; }
+
+            ModeBadge { text: mode; }
+
+            HomeButton { clicked => { root.close(); } }
+        }
+
+        HorizontalLayout {
+            spacing: Theme.space-16;
+            vertical-stretch: 1;
+
+            // LEFT — primary instrument
+            VerticalLayout {
+                spacing: Theme.space-12;
+                horizontal-stretch: 2;
+
+                SectionLabel { text: "FREQUENCY"; }
+
+                // Large frequency display
+                Rectangle {
+                    border-radius: Theme.radius-md;
+                    border-width: 1px;
+                    border-color: Theme.border;
+                    background: Theme.bg-panel;
+                    min-height: 120px;
+
+                    VerticalLayout {
+                        padding: Theme.space-20;
+                        spacing: Theme.space-8;
+                        alignment: center;
+
+                        Text {
+                            text: freq;
+                            font-size: 36px;
+                            font-weight: 700;
+                            color: Theme.text-primary;
+                            font-family: Theme.font-mono;
+                            horizontal-alignment: center;
+                        }
+
+                        Text {
+                            text: streaming ? "STREAMING" : "IDLE";
+                            font-size: 11px;
+                            font-weight: 600;
+                            color: streaming ? Theme.accent : Theme.text-faint;
+                            font-family: Theme.font-mono;
+                            letter-spacing: 2px;
+                            horizontal-alignment: center;
+                        }
+                    }
+                }
+
+                // Tune controls
+                HorizontalLayout {
+                    spacing: Theme.space-8;
+
+                    TuneButton {
+                        label: "− 100 kHz";
+                        clicked => { root.tune-down(); }
+                    }
+                    TuneButton {
+                        label: "+ 100 kHz";
+                        clicked => { root.tune-up(); }
+                    }
+                    Rectangle { horizontal-stretch: 1; }
+                    ActionButton {
+                        label: streaming ? "STOP RX" : "START RX";
+                        emphasis: true;
+                        enabled: readiness == "ok" || readiness == "active";
+                        clicked => { root.toggle-stream(); }
+                    }
+                }
+
+                SectionLabel { text: "SPECTRUM"; }
+
+                // Placeholder waterfall / spectrum area
+                Rectangle {
+                    border-radius: Theme.radius-md;
+                    border-width: 1px;
+                    border-color: Theme.border;
+                    background: Theme.bg-panel;
+                    vertical-stretch: 1;
+                    min-height: 160px;
+
+                    VerticalLayout {
+                        alignment: center;
+                        spacing: Theme.space-8;
+
+                        Text {
+                            text: readiness == "ok" || readiness == "active" ? "WATERFALL READY" : "NO DEVICE";
+                            font-size: 12px;
+                            font-weight: 600;
+                            color: Theme.text-muted;
+                            font-family: Theme.font-mono;
+                            letter-spacing: 2px;
+                            horizontal-alignment: center;
+                        }
+                        Text {
+                            text: "Live FFT will render here when SDR is commissioned";
+                            font-size: 11px;
+                            color: Theme.text-faint;
+                            font-family: Theme.font-sans;
+                            horizontal-alignment: center;
+                        }
+                    }
+                }
+            }
+
+            // RIGHT — module info
+            VerticalLayout {
+                spacing: Theme.space-12;
+                horizontal-stretch: 1;
+
+                SectionLabel { text: "MODULE"; }
+
+                Rectangle {
+                    border-radius: Theme.radius-md;
+                    border-width: 1px;
+                    border-color: Theme.border;
+                    background: Theme.bg-panel;
+
+                    VerticalLayout {
+                        padding: Theme.space-16;
+                        spacing: Theme.space-8;
+
+                        HorizontalLayout {
+                            alignment: center;
+                            Text {
+                                text: "SDR";
+                                font-size: 11px;
+                                font-weight: 700;
+                                color: Theme.text-secondary;
+                                font-family: Theme.font-mono;
+                                letter-spacing: 1.5px;
+                            }
+                            Rectangle { horizontal-stretch: 1; }
+                            StatusDot { state: readiness; }
+                        }
+
+                        Metric { label: "DEVICE"; value: device; }
+                        Metric { label: "RATE"; value: sample-rate; }
+                        Metric { label: "MODE"; value: mode; }
+                        Metric {
+                            label: "STATE";
+                            value: streaming ? "ACTIVE" :
+                                   readiness == "ok" || readiness == "active" ? "READY" :
+                                   readiness == "warn" ? "DEGRADED" : "OFFLINE";
+                        }
+                    }
+                }
+
+                SectionLabel { text: "CONSTRAINTS"; }
+
+                Rectangle {
+                    border-radius: Theme.radius-md;
+                    border-width: 1px;
+                    border-color: Theme.border;
+                    background: Theme.bg-panel;
+
+                    VerticalLayout {
+                        padding: Theme.space-16;
+                        spacing: Theme.space-8;
+
+                        Text {
+                            text: "RECEIVE ONLY";
+                            font-size: 12px;
+                            font-weight: 700;
+                            color: Theme.accent;
+                            font-family: Theme.font-mono;
+                            letter-spacing: 1px;
+                        }
+                        Text {
+                            text: "No transmit path. No injection. Spectrum observation only.";
+                            font-size: 11px;
+                            color: Theme.text-muted;
+                            font-family: Theme.font-sans;
+                            wrap: word-wrap;
+                        }
+                    }
+                }
+
+                Rectangle { vertical-stretch: 1; }
+            }
+        }
+    }
+}
+
+// Building blocks
+component ModeBadge inherits Rectangle {
+    in property <string> text: "";
+
+    height: 28px;
+    border-radius: Theme.radius-sm;
+    border-width: 1px;
+    border-color: Theme.accent-dim;
+    background: Theme.accent-muted;
+    padding-left: 10px;
+    padding-right: 10px;
+
+    Text {
+        text: text;
+        font-size: 10px;
+        font-weight: 700;
+        color: Theme.accent;
+        font-family: Theme.font-mono;
+        letter-spacing: 1px;
+        vertical-alignment: center;
+    }
+}
+
+component SectionLabel inherits Text {
+    in property <string> text: "";
+    text: text;
+    font-size: 10px;
+    font-weight: 700;
+    color: Theme.text-faint;
+    font-family: Theme.font-mono;
+    letter-spacing: 2px;
+}
+
+component Metric inherits HorizontalLayout {
+    in property <string> label: "";
+    in property <string> value: "";
+
+    spacing: Theme.space-8;
+    height: 22px;
+
+    Text {
+        text: label;
+        font-size: 11px;
+        color: Theme.text-faint;
+        font-family: Theme.font-mono;
+        min-width: 64px;
+        vertical-alignment: center;
+    }
+    Text {
+        text: value;
+        font-size: 13px;
+        font-weight: 600;
+        color: Theme.text-primary;
+        font-family: Theme.font-mono;
+        horizontal-stretch: 1;
+        overflow: elide;
+        vertical-alignment: center;
+    }
+}
+
+component TuneButton inherits Rectangle {
+    in property <string> label: "";
+    callback clicked;
+
+    height: 36px;
+    min-width: 100px;
+    border-radius: Theme.radius-sm;
+    border-width: 1px;
+    border-color: Theme.border-strong;
+    background: Theme.bg-panel;
+
+    Text {
+        width: 100%; height: 100%;
+        text: label;
+        font-size: 11px;
+        font-weight: 600;
+        color: Theme.text-secondary;
+        font-family: Theme.font-mono;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+
+    TouchArea {
+        clicked => { root.clicked(); }
+        mouse-cursor: pointer;
+        states [
+            hover when self.has-hover: {
+                root.border-color: Theme.border-accent;
+                root.background: Theme.bg-hover;
+            }
+        ]
+    }
+}
+
+component ActionButton inherits Rectangle {
+    in property <string> label: "";
+    in property <bool> enabled: true;
+    in property <bool> emphasis: false;
+    callback clicked;
+
+    height: 36px;
+    min-width: 110px;
+    border-radius: Theme.radius-sm;
+    border-width: 1px;
+    border-color: emphasis && enabled ? Theme.accent-dim : (enabled ? Theme.border-strong : Theme.border);
+    background: emphasis && enabled ? Theme.accent-muted : Theme.bg-panel;
+    opacity: enabled ? 1.0 : 0.45;
+
+    Text {
+        width: 100%; height: 100%;
+        text: label;
+        font-size: 11px;
+        font-weight: 600;
+        color: emphasis && enabled ? Theme.accent : (enabled ? Theme.text-secondary : Theme.text-faint);
+        font-family: Theme.font-mono;
+        letter-spacing: 1px;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+
+    TouchArea {
+        enabled: root.enabled;
+        clicked => { root.clicked(); }
+        mouse-cursor: enabled ? pointer : default;
+        states [
+            hover when self.has-hover && root.enabled: {
+                root.border-color: Theme.border-accent;
+                root.background: Theme.bg-hover;
+            }
+        ]
+    }
+}
+
+component HomeButton inherits Rectangle {
+    callback clicked;
+
+    width: 96px;
+    height: 30px;
+    border-radius: Theme.radius-sm;
+    border-width: 1px;
+    border-color: Theme.border;
+    background: Theme.bg-panel;
+
+    Text {
+        width: 100%; height: 100%;
+        text: "ESC  HOME";
+        font-size: 10px;
+        font-weight: 600;
+        color: Theme.text-muted;
+        font-family: Theme.font-mono;
+        letter-spacing: 1px;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+
+    TouchArea {
+        clicked => { root.clicked(); }
+        mouse-cursor: pointer;
+    }
+}

@@ -1,0 +1,412 @@
+import { Theme } from "theme.slint";
+import { StatusDot } from "components.slint";
+
+// NAV — position, fix quality, and field orientation
+
+export component NavSurface inherits Rectangle {
+    // Fix
+    in property <string> readiness: "offline";
+    in property <string> fix: "NO FIX";
+    in property <int> sats: 0;
+    in property <string> lat: "—";
+    in property <string> lon: "—";
+    in property <string> alt: "—";
+    in property <string> speed: "—";
+    in property <string> heading: "—";
+
+    // Derived / display helpers
+    in property <string> grid-ref: "—";
+    in property <string> accuracy: "—";
+    in property <string> last-update: "—";
+
+    callback close;
+
+    background: Theme.bg-void;
+
+    VerticalLayout {
+        padding: Theme.space-20;
+        spacing: Theme.space-16;
+
+        // Header
+        HorizontalLayout {
+            spacing: Theme.space-12;
+            alignment: center;
+
+            Text {
+                text: "NAV";
+                font-size: 20px;
+                font-weight: 700;
+                color: Theme.accent;
+                font-family: Theme.font-mono;
+                letter-spacing: 2px;
+            }
+
+            Text {
+                text: "// POSITION";
+                font-size: 12px;
+                color: Theme.text-faint;
+                font-family: Theme.font-mono;
+                vertical-alignment: center;
+            }
+
+            Rectangle { horizontal-stretch: 1; }
+
+            // Live fix badge
+            FixBadge {
+                fix: fix;
+                readiness: readiness;
+            }
+
+            HomeButton { clicked => { root.close(); } }
+        }
+
+        // Main body
+        HorizontalLayout {
+            spacing: Theme.space-16;
+            vertical-stretch: 1;
+
+            // LEFT — primary position readout
+            VerticalLayout {
+                spacing: Theme.space-12;
+                horizontal-stretch: 2;
+
+                SectionLabel { text: "COORDINATES"; }
+
+                // Large coordinate block
+                Rectangle {
+                    border-radius: Theme.radius-md;
+                    border-width: 1px;
+                    border-color: Theme.border;
+                    background: Theme.bg-panel;
+                    min-height: 160px;
+
+                    VerticalLayout {
+                        padding: Theme.space-20;
+                        spacing: Theme.space-16;
+                        alignment: center;
+
+                        CoordinateRow {
+                            axis: "LAT";
+                            value: lat;
+                            large: true;
+                        }
+                        CoordinateRow {
+                            axis: "LON";
+                            value: lon;
+                            large: true;
+                        }
+                    }
+                }
+
+                // Secondary metrics row
+                HorizontalLayout {
+                    spacing: Theme.space-12;
+
+                    MiniMetric {
+                        label: "ALT";
+                        value: alt;
+                        horizontal-stretch: 1;
+                    }
+                    MiniMetric {
+                        label: "SPEED";
+                        value: speed;
+                        horizontal-stretch: 1;
+                    }
+                    MiniMetric {
+                        label: "HDG";
+                        value: heading;
+                        horizontal-stretch: 1;
+                    }
+                }
+
+                SectionLabel { text: "QUALITY"; }
+
+                Rectangle {
+                    border-radius: Theme.radius-md;
+                    border-width: 1px;
+                    border-color: Theme.border;
+                    background: Theme.bg-panel;
+
+                    VerticalLayout {
+                        padding: Theme.space-16;
+                        spacing: Theme.space-8;
+
+                        Metric { label: "FIX"; value: fix; }
+                        Metric { label: "SATS"; value: "" + sats; }
+                        Metric { label: "ACC"; value: accuracy; }
+                        Metric { label: "AGE"; value: last-update; }
+                    }
+                }
+            }
+
+            // RIGHT — status + actions
+            VerticalLayout {
+                spacing: Theme.space-12;
+                horizontal-stretch: 1;
+
+                SectionLabel { text: "MODULE"; }
+
+                Rectangle {
+                    border-radius: Theme.radius-md;
+                    border-width: 1px;
+                    border-color: Theme.border;
+                    background: Theme.bg-panel;
+
+                    VerticalLayout {
+                        padding: Theme.space-16;
+                        spacing: Theme.space-12;
+
+                        HorizontalLayout {
+                            alignment: center;
+                            Text {
+                                text: "GNSS";
+                                font-size: 11px;
+                                font-weight: 700;
+                                color: Theme.text-secondary;
+                                font-family: Theme.font-mono;
+                                letter-spacing: 1.5px;
+                            }
+                            Rectangle { horizontal-stretch: 1; }
+                            StatusDot { state: readiness; }
+                        }
+
+                        Metric { label: "STATE"; value: readiness == "ok" || readiness == "active" ? "ONLINE" : readiness == "warn" ? "DEGRADED" : "OFFLINE"; }
+                        Metric { label: "SATS IN VIEW"; value: "" + sats; }
+                        Metric { label: "GRID"; value: grid-ref; }
+                    }
+                }
+
+                SectionLabel { text: "ACTIONS"; }
+
+                VerticalLayout {
+                    spacing: Theme.space-8;
+
+                    ActionButton {
+                        label: "MARK WAYPOINT";
+                        enabled: readiness == "ok" || readiness == "active";
+                    }
+                    ActionButton {
+                        label: "START TRACK";
+                        enabled: readiness == "ok" || readiness == "active";
+                    }
+                    ActionButton {
+                        label: "COPY COORDS";
+                        enabled: lat != "—";
+                    }
+                }
+
+                Rectangle { vertical-stretch: 1; }
+
+                // Quiet note
+                Text {
+                    text: "Maps and tracks will layer on once core position is solid.";
+                    font-size: 11px;
+                    color: Theme.text-faint;
+                    font-family: Theme.font-sans;
+                    wrap: word-wrap;
+                }
+            }
+        }
+    }
+}
+
+// ----------------------------------------------------------
+// Building blocks
+// ----------------------------------------------------------
+
+component FixBadge inherits Rectangle {
+    in property <string> fix: "NO FIX";
+    in property <string> readiness: "offline";
+
+    height: 28px;
+    border-radius: Theme.radius-sm;
+    border-width: 1px;
+    border-color: readiness == "ok" || readiness == "active" ? Theme.accent-dim :
+                  readiness == "warn" ? Theme.warn : Theme.border;
+    background: readiness == "ok" || readiness == "active" ? Theme.accent-muted :
+                Theme.bg-panel;
+    padding-left: 10px;
+    padding-right: 10px;
+
+    HorizontalLayout {
+        spacing: 6px;
+        alignment: center;
+
+        StatusDot { state: readiness; }
+
+        Text {
+            text: fix;
+            font-size: 11px;
+            font-weight: 700;
+            color: readiness == "ok" || readiness == "active" ? Theme.accent :
+                   readiness == "warn" ? Theme.warn : Theme.text-muted;
+            font-family: Theme.font-mono;
+            letter-spacing: 1px;
+            vertical-alignment: center;
+        }
+    }
+}
+
+component CoordinateRow inherits HorizontalLayout {
+    in property <string> axis: "";
+    in property <string> value: "";
+    in property <bool> large: false;
+
+    spacing: Theme.space-16;
+    alignment: center;
+
+    Text {
+        text: axis;
+        font-size: large ? 14px : 12px;
+        font-weight: 700;
+        color: Theme.text-faint;
+        font-family: Theme.font-mono;
+        letter-spacing: 2px;
+        min-width: 40px;
+    }
+
+    Text {
+        text: value;
+        font-size: large ? 28px : 16px;
+        font-weight: 600;
+        color: Theme.text-primary;
+        font-family: Theme.font-mono;
+        horizontal-stretch: 1;
+    }
+}
+
+component MiniMetric inherits Rectangle {
+    in property <string> label: "";
+    in property <string> value: "";
+
+    border-radius: Theme.radius-md;
+    border-width: 1px;
+    border-color: Theme.border;
+    background: Theme.bg-panel;
+    min-height: 64px;
+
+    VerticalLayout {
+        padding: Theme.space-12;
+        spacing: 4px;
+        alignment: center;
+
+        Text {
+            text: label;
+            font-size: 10px;
+            font-weight: 700;
+            color: Theme.text-faint;
+            font-family: Theme.font-mono;
+            letter-spacing: 1px;
+        }
+        Text {
+            text: value;
+            font-size: 16px;
+            font-weight: 600;
+            color: Theme.text-primary;
+            font-family: Theme.font-mono;
+        }
+    }
+}
+
+component SectionLabel inherits Text {
+    in property <string> text: "";
+    text: text;
+    font-size: 10px;
+    font-weight: 700;
+    color: Theme.text-faint;
+    font-family: Theme.font-mono;
+    letter-spacing: 2px;
+}
+
+component Metric inherits HorizontalLayout {
+    in property <string> label: "";
+    in property <string> value: "";
+
+    spacing: Theme.space-8;
+    height: 22px;
+
+    Text {
+        text: label;
+        font-size: 11px;
+        color: Theme.text-faint;
+        font-family: Theme.font-mono;
+        min-width: 72px;
+        vertical-alignment: center;
+    }
+    Text {
+        text: value;
+        font-size: 13px;
+        font-weight: 600;
+        color: Theme.text-primary;
+        font-family: Theme.font-mono;
+        horizontal-stretch: 1;
+        overflow: elide;
+        vertical-alignment: center;
+    }
+}
+
+component ActionButton inherits Rectangle {
+    in property <string> label: "";
+    in property <bool> enabled: true;
+    callback clicked;
+
+    height: 36px;
+    border-radius: Theme.radius-sm;
+    border-width: 1px;
+    border-color: enabled ? Theme.border-strong : Theme.border;
+    background: Theme.bg-panel;
+    opacity: enabled ? 1.0 : 0.45;
+
+    Text {
+        width: 100%; height: 100%;
+        text: label;
+        font-size: 11px;
+        font-weight: 600;
+        color: enabled ? Theme.text-secondary : Theme.text-faint;
+        font-family: Theme.font-mono;
+        letter-spacing: 1px;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+
+    TouchArea {
+        enabled: root.enabled;
+        clicked => { root.clicked(); }
+        mouse-cursor: enabled ? pointer : default;
+
+        states [
+            hover when self.has-hover && root.enabled: {
+                root.border-color: Theme.border-accent;
+                root.background: Theme.bg-hover;
+            }
+        ]
+    }
+}
+
+component HomeButton inherits Rectangle {
+    callback clicked;
+
+    width: 96px;
+    height: 30px;
+    border-radius: Theme.radius-sm;
+    border-width: 1px;
+    border-color: Theme.border;
+    background: Theme.bg-panel;
+
+    Text {
+        width: 100%; height: 100%;
+        text: "ESC  HOME";
+        font-size: 10px;
+        font-weight: 600;
+        color: Theme.text-muted;
+        font-family: Theme.font-mono;
+        letter-spacing: 1px;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+
+    TouchArea {
+        clicked => { root.clicked(); }
+        mouse-cursor: pointer;
+    }
+}

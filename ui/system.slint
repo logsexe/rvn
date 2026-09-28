@@ -1,0 +1,273 @@
+import { Theme } from "theme.slint";
+import { StatusDot } from "components.slint";
+
+// SYSTEM — platform instrument panel
+
+export component SystemSurface inherits Rectangle {
+    in property <string> cpu-model: "Raspberry Pi 5";
+    in property <float> cpu-percent: 0;
+    in property <float> temp-c: 0;
+    in property <int> mem-used-mb: 0;
+    in property <int> mem-total-mb: 8192;
+
+    in property <string> power-source: "Unknown";
+    in property <string> power-percent: "—";
+    in property <string> power-voltage: "—";
+    in property <bool> throttled: false;
+
+    in property <string> gps-readiness: "offline";
+    in property <string> gps-fix: "NO FIX";
+    in property <int> gps-sats: 0;
+    in property <string> gps-lat: "—";
+    in property <string> gps-lon: "—";
+
+    in property <string> radio-readiness: "offline";
+    in property <string> radio-device: "—";
+    in property <string> radio-freq: "—";
+
+    in property <string> mesh-readiness: "offline";
+    in property <string> mesh-node: "—";
+    in property <int> mesh-nodes: 0;
+
+    in property <float> storage-used: 0;
+    in property <string> storage-free: "—";
+    in property <string> net-ifaces: "—";
+
+    callback close;
+
+    background: Theme.bg-void;
+
+    VerticalLayout {
+        padding: Theme.space-20;
+        spacing: Theme.space-16;
+
+        // Header strip
+        HorizontalLayout {
+            spacing: Theme.space-12;
+            alignment: center;
+
+            Text {
+                text: "SYSTEM";
+                font-size: 20px;
+                font-weight: 700;
+                color: Theme.accent;
+                font-family: Theme.font-mono;
+                letter-spacing: 2px;
+            }
+
+            Text {
+                text: "// PLATFORM";
+                font-size: 12px;
+                color: Theme.text-faint;
+                font-family: Theme.font-mono;
+                vertical-alignment: center;
+            }
+
+            Rectangle { horizontal-stretch: 1; }
+
+            HomeButton { clicked => { root.close(); } }
+        }
+
+        // Two-column instrument layout
+        HorizontalLayout {
+            spacing: Theme.space-16;
+            vertical-stretch: 1;
+
+            // LEFT — core platform
+            VerticalLayout {
+                spacing: Theme.space-12;
+                horizontal-stretch: 1;
+
+                SectionLabel { text: "PLATFORM"; }
+
+                InstrumentCard {
+                    title: "COMPUTE";
+                    status: temp-c > 75 ? "warn" : "ok";
+
+                    Metric { label: "BOARD"; value: cpu-model; }
+                    Metric { label: "LOAD"; value: "" + cpu-percent + " %"; }
+                    Metric {
+                        label: "TEMP";
+                        value: "" + temp-c + " °C";
+                        warn: temp-c > 75;
+                    }
+                    Metric {
+                        label: "MEM";
+                        value: "" + mem-used-mb + " / " + mem-total-mb + " MB";
+                    }
+                }
+
+                InstrumentCard {
+                    title: "POWER";
+                    status: throttled ? "warn" : (power-percent == "—" ? "offline" : "ok");
+
+                    Metric { label: "SOURCE"; value: power-source; }
+                    Metric { label: "CHARGE"; value: power-percent; }
+                    Metric { label: "BUS"; value: power-voltage; }
+                    Metric {
+                        label: "THROTTLE";
+                        value: throttled ? "ACTIVE" : "NONE";
+                        warn: throttled;
+                    }
+                }
+
+                InstrumentCard {
+                    title: "STORAGE / NET";
+                    status: "ok";
+
+                    Metric { label: "ROOT"; value: "" + storage-used + " % used"; }
+                    Metric { label: "FREE"; value: storage-free; }
+                    Metric { label: "IFACE"; value: net-ifaces; }
+                }
+            }
+
+            // RIGHT — field modules
+            VerticalLayout {
+                spacing: Theme.space-12;
+                horizontal-stretch: 1;
+
+                SectionLabel { text: "FIELD MODULES"; }
+
+                InstrumentCard {
+                    title: "GPS";
+                    status: gps-readiness;
+
+                    Metric { label: "FIX"; value: gps-fix; }
+                    Metric { label: "SATS"; value: "" + gps-sats; }
+                    Metric { label: "LAT"; value: gps-lat; }
+                    Metric { label: "LON"; value: gps-lon; }
+                }
+
+                InstrumentCard {
+                    title: "RADIO";
+                    status: radio-readiness;
+
+                    Metric { label: "DEVICE"; value: radio-device; }
+                    Metric { label: "CENTER"; value: radio-freq; }
+                    Metric { label: "MODE"; value: "RECEIVE ONLY"; }
+                }
+
+                InstrumentCard {
+                    title: "MESH";
+                    status: mesh-readiness;
+
+                    Metric { label: "NODE"; value: mesh-node; }
+                    Metric { label: "HEARD"; value: "" + mesh-nodes + " nodes"; }
+                    Metric { label: "STACK"; value: "Meshtastic"; }
+                }
+            }
+        }
+    }
+}
+
+// ----------------------------------------------------------
+// Local building blocks
+// ----------------------------------------------------------
+
+component SectionLabel inherits Text {
+    in property <string> text: "";
+    text: text;
+    font-size: 10px;
+    font-weight: 700;
+    color: Theme.text-faint;
+    font-family: Theme.font-mono;
+    letter-spacing: 2px;
+}
+
+component InstrumentCard inherits Rectangle {
+    in property <string> title: "";
+    in property <string> status: "offline";
+
+    border-radius: Theme.radius-md;
+    border-width: 1px;
+    border-color: Theme.border;
+    background: Theme.bg-panel;
+
+    VerticalLayout {
+        padding: Theme.space-16;
+        spacing: Theme.space-8;
+
+        HorizontalLayout {
+            alignment: center;
+            spacing: Theme.space-8;
+
+            Text {
+                text: title;
+                font-size: 11px;
+                font-weight: 700;
+                color: Theme.text-secondary;
+                font-family: Theme.font-mono;
+                letter-spacing: 1.5px;
+            }
+
+            Rectangle { horizontal-stretch: 1; }
+            StatusDot { state: status; }
+        }
+
+        @children
+    }
+}
+
+component Metric inherits HorizontalLayout {
+    in property <string> label: "";
+    in property <string> value: "";
+    in property <bool> warn: false;
+
+    spacing: Theme.space-8;
+    height: 22px;
+
+    Text {
+        text: label;
+        font-size: 11px;
+        color: Theme.text-faint;
+        font-family: Theme.font-mono;
+        min-width: 64px;
+        vertical-alignment: center;
+    }
+
+    Text {
+        text: value;
+        font-size: 13px;
+        font-weight: 600;
+        color: warn ? Theme.warn : Theme.text-primary;
+        font-family: Theme.font-mono;
+        horizontal-stretch: 1;
+        overflow: elide;
+        vertical-alignment: center;
+    }
+}
+
+component HomeButton inherits Rectangle {
+    callback clicked;
+
+    width: 96px;
+    height: 30px;
+    border-radius: Theme.radius-sm;
+    border-width: 1px;
+    border-color: Theme.border;
+    background: Theme.bg-panel;
+
+    Text {
+        width: 100%; height: 100%;
+        text: "ESC  HOME";
+        font-size: 10px;
+        font-weight: 600;
+        color: Theme.text-muted;
+        font-family: Theme.font-mono;
+        letter-spacing: 1px;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+
+    TouchArea {
+        clicked => { root.clicked(); }
+        mouse-cursor: pointer;
+
+        states [
+            hover when self.has-hover: {
+                root.border-color: Theme.border-strong;
+                root.background: Theme.bg-hover;
+            }
+        ]
+    }
+}

@@ -1,0 +1,25 @@
+[package]
+name = "rvn"
+version = "0.1.0"
+edition = "2021"
+description = "RVN — Off-grid field cyberdeck (FIELD//OS)"
+license = "Apache-2.0"
+authors = ["logsexe"]
+
+[dependencies]
+slint = { version = "1.18", default-features = true, features = ["backend-winit", "renderer-skia"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "sync"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+chrono = { version = "0.4", features = ["serde"] }
+anyhow = "1"
+thiserror = "2"
+
+[build-dependencies]
+slint-build = "1.18"
+
+[[bin]]
+name = "rvn"
+path = "src/main.rs"
