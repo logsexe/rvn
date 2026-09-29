@@ -31,6 +31,99 @@ struct SweepRun {
     return_mhz: f32,
 }
 
+/// How soon the worker may touch USB again. A missing dongle is logged once,
+/// then left alone so the shell is not stuck reopening it.
+struct ProbePace {
+    next: Instant,
+    misses: u32,
+    told: bool,
+    seen: bool,
+}
+
+impl ProbePace {
+    fn new() -> Self {
+        Self {
+            next: Instant::now(),
+            misses: 0,
+            told: false,
+            seen: false,
+        }
+    }
+
+    fn due(&self) -> bool {
+        Instant::now() >= self.next
+    }
+
+    fn ask(&mut self) {
+        self.told = false;
+        self.next = Instant::now();
+    }
+
+    fn found(&mut self) -> bool {
+        let came_back = self.told;
+        self.misses = 0;
+        self.told = false;
+        self.seen = true;
+        self.next = Instant::now() + Duration::from_secs(2);
+        came_back
+    }
+
+    fn lost(&mut self, err: &str) {
+        self.announce(err, false);
+    }
+
+    fn quiet_absent(&mut self) {
+        if self.seen {
+            self.announce("", true);
+        } else {
+            self.arm(true);
+        }
+    }
+
+    fn announce(&mut self, err: &str, clean: bool) {
+        if !self.told {
+            tracing::warn!("{}", absence_line(self.seen, err));
+            self.told = true;
+        }
+        self.seen = false;
+        self.arm(clean);
+    }
+
+    fn arm(&mut self, clean: bool) {
+        self.misses = self.misses.saturating_add(1);
+        self.next = Instant::now() + reconnect_pause(self.misses, clean);
+    }
+}
+
+fn reconnect_pause(misses: u32, listed_empty: bool) -> Duration {
+    if listed_empty {
+        if misses <= 1 {
+            Duration::from_secs(3)
+        } else {
+            Duration::from_secs(8)
+        }
+    } else if misses <= 1 {
+        Duration::from_secs(5)
+    } else {
+        Duration::from_secs(15)
+    }
+}
+
+fn absence_line(seen: bool, err: &str) -> String {
+    let plain = err.is_empty() || err == "no RTL-SDR";
+    if seen {
+        if plain {
+            "SDR receiver removed".into()
+        } else {
+            format!("SDR receiver removed: {err}")
+        }
+    } else if plain {
+        "SDR receiver unavailable".into()
+    } else {
+        format!("SDR receiver unavailable: {err}")
+    }
+}
+
 pub struct RadioAdapter {
     status: Arc<Mutex<RadioStatus>>,
     tx: Mutex<Option<Sender<RadioCmd>>>,
@@ -88,7 +181,7 @@ fn radio_loop(status: Arc<Mutex<RadioStatus>>, rx: Receiver<RadioCmd>) {
     let mut freq_mhz = 433.0_f32;
     let mut device: Option<RtlSdr> = None;
     let mut sweep: Option<SweepRun> = None;
-    let mut last_scan = Instant::now() - Duration::from_secs(10);
+    let mut pace = ProbePace::new();
     let mut last_fft = Instant::now() - Duration::from_secs(1);
     let mut buf = vec![0u8; READ_LEN];
     let mut planner = FftPlanner::<f32>::new();
@@ -113,10 +206,13 @@ fn radio_loop(status: Arc<Mutex<RadioStatus>>, rx: Receiver<RadioCmd>) {
                         if state.readiness == Readiness::Active {
                             state.readiness = Readiness::Ready;
                         }
+                    } else {
+                        pace.ask();
                     }
                     streaming = on;
                 }
                 RadioCmd::Sweep { points, label } => {
+                    pace.ask();
                     let mut state = status.lock().unwrap();
                     state.scanning = true;
                     state.scan_progress = 0.0;
@@ -171,18 +267,15 @@ fn radio_loop(status: Arc<Mutex<RadioStatus>>, rx: Receiver<RadioCmd>) {
                     continue;
                 }
                 SweepStep::Failed(err) => {
-                    tracing::warn!("SDR sweep: {err}");
+                    pace.lost(&err);
                     sweep = None;
                     let mut state = status.lock().unwrap();
                     state.scanning = false;
                     state.scan_label = "No receiver".into();
-                    state.readiness = if err == "no RTL-SDR" {
-                        Readiness::NotPresent
-                    } else {
-                        Readiness::Degraded
-                    };
+                    mark_radio_down(&mut state, err == "no RTL-SDR");
+                    drop(state);
                     close_device(&mut device);
-                    std::thread::sleep(Duration::from_millis(400));
+                    std::thread::sleep(Duration::from_millis(200));
                     continue;
                 }
             }
@@ -190,9 +283,16 @@ fn radio_loop(status: Arc<Mutex<RadioStatus>>, rx: Receiver<RadioCmd>) {
 
         if streaming {
             if device.is_none() {
+                if !pace.due() {
+                    std::thread::sleep(Duration::from_millis(200));
+                    continue;
+                }
                 match open_sdr(freq_mhz) {
                     Ok((sdr, name)) => {
                         device = Some(sdr);
+                        if pace.found() {
+                            tracing::info!("SDR receiver back");
+                        }
                         let mut state = status.lock().unwrap();
                         state.readiness = Readiness::Active;
                         state.device = name;
@@ -201,15 +301,11 @@ fn radio_loop(status: Arc<Mutex<RadioStatus>>, rx: Receiver<RadioCmd>) {
                         state.simulated = false;
                     }
                     Err(err) => {
-                        tracing::warn!("SDR open: {err}");
+                        pace.lost(&err);
                         let mut state = status.lock().unwrap();
-                        state.readiness = if err == "no RTL-SDR" {
-                            Readiness::NotPresent
-                        } else {
-                            Readiness::Degraded
-                        };
-                        state.spectrum = vec![0.0; SPECTRUM_BINS];
-                        std::thread::sleep(Duration::from_millis(700));
+                        mark_radio_down(&mut state, err == "no RTL-SDR");
+                        drop(state);
+                        std::thread::sleep(Duration::from_millis(200));
                         continue;
                     }
                 }
@@ -227,25 +323,50 @@ fn radio_loop(status: Arc<Mutex<RadioStatus>>, rx: Receiver<RadioCmd>) {
                     state.sample_rate = SAMPLE_RATE;
                     state.simulated = false;
                     last_fft = Instant::now();
+                    pace.seen = true;
                 }
-                Ok(_) => {}
+                Ok(_) => std::thread::sleep(Duration::from_millis(20)),
                 Err(err) => {
-                    tracing::warn!("SDR read: {err}");
+                    pace.lost(&err.to_string());
                     close_device(&mut device);
-                    let mut state = status.lock().unwrap();
-                    state.readiness = Readiness::Degraded;
-                    state.spectrum = vec![0.0; SPECTRUM_BINS];
-                    std::thread::sleep(Duration::from_millis(400));
+                    mark_radio_down(&mut status.lock().unwrap(), false);
+                    std::thread::sleep(Duration::from_millis(200));
                 }
             }
-        } else {
-            if last_scan.elapsed() >= Duration::from_secs(2) {
-                last_scan = Instant::now();
-                scan_devices(&status, freq_mhz);
+        } else if pace.due() {
+            match scan_devices(&status, freq_mhz) {
+                Listed::Present => {
+                    if pace.found() {
+                        tracing::info!("SDR receiver back");
+                    }
+                }
+                Listed::Absent => pace.quiet_absent(),
+                Listed::Error(err) => pace.lost(&err),
             }
+            std::thread::sleep(Duration::from_millis(200));
+        } else {
             std::thread::sleep(Duration::from_millis(200));
         }
     }
+}
+
+fn mark_radio_down(state: &mut RadioStatus, missing: bool) {
+    state.readiness = if missing {
+        Readiness::NotPresent
+    } else {
+        Readiness::Degraded
+    };
+    state.spectrum = vec![0.0; SPECTRUM_BINS];
+    if missing {
+        state.device = "—".into();
+        state.sample_rate = 0;
+    }
+}
+
+enum Listed {
+    Present,
+    Absent,
+    Error(String),
 }
 
 enum SweepStep {
@@ -334,7 +455,7 @@ fn iq_power(iq: &[u8]) -> f32 {
     (acc / n as f32).sqrt()
 }
 
-fn scan_devices(status: &Mutex<RadioStatus>, freq_mhz: f32) {
+fn scan_devices(status: &Mutex<RadioStatus>, freq_mhz: f32) -> Listed {
     match list_devices() {
         Ok(devices) => {
             let mut state = status.lock().unwrap();
@@ -344,20 +465,22 @@ fn scan_devices(status: &Mutex<RadioStatus>, freq_mhz: f32) {
                 state.sample_rate = SAMPLE_RATE;
                 state.center_freq_mhz = freq_mhz;
                 state.simulated = false;
+                Listed::Present
             } else {
                 state.readiness = Readiness::NotPresent;
                 state.device = "—".into();
                 state.sample_rate = 0;
                 state.spectrum = vec![0.0; SPECTRUM_BINS];
+                Listed::Absent
             }
         }
         Err(err) => {
-            tracing::warn!("SDR scan: {err}");
             let mut state = status.lock().unwrap();
             state.readiness = Readiness::Degraded;
             if state.device == "—" {
                 state.device = "RTL-SDR".into();
             }
+            Listed::Error(err)
         }
     }
 }
@@ -440,6 +563,24 @@ fn spectrum_from_iq_with(fft: &dyn Fft<f32>, iq: &[u8]) -> Vec<f32> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_missing_receiver_waits_longer_each_miss() {
+        assert_eq!(reconnect_pause(1, true), Duration::from_secs(3));
+        assert_eq!(reconnect_pause(2, true), Duration::from_secs(8));
+        assert_eq!(reconnect_pause(1, false), Duration::from_secs(5));
+        assert_eq!(reconnect_pause(4, false), Duration::from_secs(15));
+    }
+
+    #[test]
+    fn removal_is_one_line() {
+        assert_eq!(absence_line(true, "no RTL-SDR"), "SDR receiver removed");
+        assert_eq!(
+            absence_line(true, "device disconnected"),
+            "SDR receiver removed: device disconnected"
+        );
+        assert_eq!(absence_line(false, "no RTL-SDR"), "SDR receiver unavailable");
+    }
 
     #[test]
     fn short_buffer_is_silent() {

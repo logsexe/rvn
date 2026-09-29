@@ -169,6 +169,7 @@ fn mesh_loop(
                 claims.release(&name);
                 *slot.lock().unwrap() = MeshInner::fresh();
                 tracing::info!("MESH lost {name}");
+                std::thread::sleep(Duration::from_secs(3));
             }
             None => std::thread::sleep(Duration::from_secs(3)),
         }

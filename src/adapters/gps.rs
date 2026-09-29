@@ -89,6 +89,7 @@ fn gps_loop(slot: Arc<Mutex<GpsInner>>, claims: Arc<PortClaims>, gate: Arc<Atomi
                     open: false,
                 };
                 tracing::info!("GPS lost {name}");
+                std::thread::sleep(Duration::from_secs(3));
             }
             None => {
                 gate.store(true, Ordering::SeqCst);
