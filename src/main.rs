@@ -99,9 +99,14 @@ fn main() -> Result<()> {
                 }
                 st.clone()
             };
-            if let (Some(lat), Some(lon)) = (snap.platform.gps.latitude, snap.platform.gps.longitude)
             {
-                map.lock().unwrap().note_fix(lat, lon);
+                let mut view = map.lock().unwrap();
+                view.set_marks(&snap.track, &mark_points(&snap));
+                if let (Some(lat), Some(lon)) =
+                    (snap.platform.gps.latitude, snap.platform.gps.longitude)
+                {
+                    view.note_fix(lat, lon);
+                }
             }
             let ctrl = controls.lock().unwrap().clone();
             push_ui(&ui, &snap, &ctrl);
@@ -306,6 +311,7 @@ fn main() -> Result<()> {
     {
         let controls = controls.clone();
         let state = state.clone();
+        let map = map.clone();
         let ui_weak = ui.as_weak();
         ui.on_nav_mark(move || {
             let Some(ui) = ui_weak.upgrade() else {
@@ -318,6 +324,9 @@ fn main() -> Result<()> {
                 info!("NAV {}", st.nav_notice);
                 st.clone()
             };
+            map.lock()
+                .unwrap()
+                .set_marks(&snap.track, &mark_points(&snap));
             let ctrl = controls.lock().unwrap().clone();
             push_ui(&ui, &snap, &ctrl);
         });
@@ -325,6 +334,7 @@ fn main() -> Result<()> {
     {
         let controls = controls.clone();
         let state = state.clone();
+        let map = map.clone();
         let ui_weak = ui.as_weak();
         ui.on_nav_toggle_track(move || {
             let Some(ui) = ui_weak.upgrade() else {
@@ -336,6 +346,9 @@ fn main() -> Result<()> {
                 info!("NAV {}", st.nav_notice);
                 st.clone()
             };
+            map.lock()
+                .unwrap()
+                .set_marks(&snap.track, &mark_points(&snap));
             let ctrl = controls.lock().unwrap().clone();
             push_ui(&ui, &snap, &ctrl);
         });
@@ -673,6 +686,10 @@ fn mesh_node_rows(peers: &[core::hardware::MeshPeer]) -> Vec<MeshNode> {
             own: peer.own,
         })
         .collect()
+}
+
+fn mark_points(state: &AppState) -> Vec<(f64, f64)> {
+    state.waypoints.iter().map(|wp| (wp.lat, wp.lon)).collect()
 }
 
 fn waypoint_rows(state: &AppState) -> Vec<WaypointRow> {

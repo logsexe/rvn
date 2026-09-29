@@ -79,6 +79,8 @@ pub struct AppState {
     pub clock: String,
     pub waypoints: Vec<Waypoint>,
     pub tracking: bool,
+    /// Walked path, oldest first. Capped so a long day does not grow without limit.
+    pub track: Vec<(f64, f64)>,
     pub track_points: u32,
     pub last_track_lat: Option<f64>,
     pub last_track_lon: Option<f64>,
@@ -95,6 +97,7 @@ impl Default for AppState {
             clock: "00:00:00".into(),
             waypoints: Vec::new(),
             tracking: false,
+            track: Vec::new(),
             track_points: 0,
             last_track_lat: None,
             last_track_lon: None,
@@ -234,6 +237,7 @@ impl AppState {
     pub fn toggle_track(&mut self) {
         self.tracking = !self.tracking;
         if self.tracking {
+            self.track.clear();
             self.track_points = 0;
             self.last_track_lat = None;
             self.last_track_lon = None;
@@ -263,7 +267,12 @@ impl AppState {
             _ => true,
         };
         if moved {
-            self.track_points += 1;
+            self.track.push((lat, lon));
+            if self.track.len() > 1_500 {
+                let extra = self.track.len() - 1_500;
+                self.track.drain(0..extra);
+            }
+            self.track_points = self.track.len() as u32;
             self.last_track_lat = Some(lat);
             self.last_track_lon = Some(lon);
         }
@@ -335,8 +344,10 @@ mod tests {
         state.platform.gps.latitude = Some(-27.48);
         state.sample_track();
         assert_eq!(state.track_points, 2);
+        assert_eq!(state.track.len(), 2);
         state.toggle_track();
         assert!(!state.tracking);
+        assert_eq!(state.track.len(), 2);
         assert_eq!(state.operation_name, "STANDBY");
     }
 

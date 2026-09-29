@@ -41,6 +41,8 @@ pub struct MapView {
     tx: Option<SyncSender<(u8, u32, u32)>>,
     dirty: bool,
     missing: usize,
+    track: Vec<(f64, f64)>,
+    marks: Vec<(f64, f64)>,
 }
 
 impl MapView {
@@ -85,12 +87,26 @@ impl MapView {
             tx,
             dirty: true,
             missing: 0,
+            track: Vec::new(),
+            marks: Vec::new(),
         }
     }
 
+    /// The walked path and the dropped waypoints. Unchanged input does not redraw.
+    pub fn set_marks(&mut self, track: &[(f64, f64)], marks: &[(f64, f64)]) {
+        if self.track == track && self.marks == marks {
+            return;
+        }
+        self.track.clear();
+        self.track.extend_from_slice(track);
+        self.marks.clear();
+        self.marks.extend_from_slice(marks);
+        self.dirty = true;
+    }
+
     pub fn set_viewport(&mut self, width: f32, height: f32) {
-        let width = width.round().clamp(64.0, 1280.0) as u32;
-        let height = height.round().clamp(64.0, 800.0) as u32;
+        let width = width.round().clamp(64.0, 1920.0) as u32;
+        let height = height.round().clamp(64.0, 1200.0) as u32;
         if width != self.width || height != self.height {
             self.width = width;
             self.height = height;
@@ -235,6 +251,22 @@ impl MapView {
             } else {
                 self.missing += 1;
             }
+        }
+        draw_track(
+            &mut rgba,
+            width,
+            height,
+            self.zoom,
+            self.lat,
+            self.lon,
+            &self.track,
+        );
+        for (lat, lon) in &self.marks {
+            let (x, y) = project(*lat, *lon, self.zoom, self.lat, self.lon, width, height);
+            if x < -8.0 || y < -8.0 || x >= f64::from(width) + 8.0 || y >= f64::from(height) + 8.0 {
+                continue;
+            }
+            paint_dot(&mut rgba, width, height, x, y, 4, 251, 191, 36);
         }
         if let Some((lat, lon)) = self.fix {
             let (x, y) = project(lat, lon, self.zoom, self.lat, self.lon, width, height);
@@ -482,6 +514,26 @@ fn unproject(x: f64, y: f64, lat: f64, lon: f64, zoom: f64, width: u32, height: 
     (x_to_lon(wx, zoom), y_to_lat(wy, zoom))
 }
 
+fn draw_track(
+    rgba: &mut [u8],
+    width: u32,
+    height: u32,
+    zoom: f64,
+    lat: f64,
+    lon: f64,
+    track: &[(f64, f64)],
+) {
+    for pair in track.windows(2) {
+        let (x1, y1) = project(pair[0].0, pair[0].1, zoom, lat, lon, width, height);
+        let (x2, y2) = project(pair[1].0, pair[1].1, zoom, lat, lon, width, height);
+        if (x2 - x1).hypot(y2 - y1) > 900.0 {
+            continue;
+        }
+        draw_line(rgba, width, height, x1, y1 + 1.0, x2, y2 + 1.0, 6, 10, 14);
+        draw_line(rgba, width, height, x1, y1, x2, y2, 45, 212, 191);
+    }
+}
+
 fn draw_line(rgba: &mut [u8], width: u32, height: u32, x0: f64, y0: f64, x1: f64, y1: f64, r: u8, g: u8, b: u8) {
     let mut x0 = x0.round() as i32;
     let mut y0 = y0.round() as i32;
@@ -659,6 +711,41 @@ mod tests {
         map.pan(180.0, 0.0);
         assert!(map.lon < before);
         assert!(!map.follow);
+    }
+
+    #[test]
+    fn track_crosses_the_center() {
+        let mut map = MapView::offline();
+        map.set_viewport(200.0, 120.0);
+        map.lat = -27.47;
+        map.lon = 153.02;
+        map.zoom = 8.0;
+        map.follow = false;
+        map.hone = None;
+        map.set_marks(&[(-27.47, 152.5), (-27.47, 153.5)], &[]);
+        let frame = map.render().expect("frame");
+        let i = (frame.height / 2 * frame.width + frame.width / 2) as usize * 4;
+        assert!(frame.rgba[i + 1] > 150, "g {}", frame.rgba[i + 1]);
+    }
+
+    #[test]
+    fn waypoint_marks_its_place() {
+        let mut map = MapView::offline();
+        map.set_viewport(200.0, 120.0);
+        map.lat = -27.47;
+        map.lon = 153.02;
+        map.zoom = 10.0;
+        map.follow = false;
+        map.hone = None;
+        let mark = (-27.50, 153.05);
+        map.set_marks(&[], &[mark]);
+        let frame = map.render().expect("frame");
+        let (x, y) = project(mark.0, mark.1, 10.0, -27.47, 153.02, frame.width, frame.height);
+        let xi = x.round() as usize;
+        let yi = y.round() as usize;
+        assert!(xi < frame.width as usize && yi < frame.height as usize);
+        let i = (yi * frame.width as usize + xi) * 4;
+        assert!(frame.rgba[i] > 200, "r {}", frame.rgba[i]);
     }
 
     #[test]

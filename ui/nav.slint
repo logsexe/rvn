@@ -470,7 +470,7 @@ export component NavSurface inherits Rectangle {
                 }
 
                 Text {
-                    text: notice != "" ? notice : (tracking ? "TRACKING · " + track-count + " PTS" : "Drag the map. Scroll or + / − to zoom.");
+                    text: notice != "" ? notice : (tracking ? "TRACKING · " + track-count + " PTS" : "Drag the map. Marks and the track draw on it.");
                     font-size: 11px;
                     color: notice != "" || tracking ? Theme.accent : Theme.text-faint;
                     font-family: Theme.font-sans;
