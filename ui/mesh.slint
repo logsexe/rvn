@@ -1,18 +1,249 @@
 import { Theme } from "theme.slint";
 import { StatusDot } from "components.slint";
+import { MeshLine, MeshNode } from "models.slint";
 
 // MESH — Meshtastic nodes and operator messaging
 
+component TxBadge inherits Rectangle {
+    in property <bool> enabled: false;
+
+    height: 28px;
+    border-radius: Theme.radius-sm;
+    border-width: 1px;
+    border-color: enabled ? Theme.warn : Theme.border;
+    background: enabled ? #fbbf2422 : Theme.bg-panel;
+    padding-left: 10px;
+    padding-right: 10px;
+
+    Text {
+        text: enabled ? "TX ARMED" : "TX SAFE";
+        font-size: 10px;
+        font-weight: 700;
+        color: enabled ? Theme.warn : Theme.text-muted;
+        font-family: Theme.font-mono;
+        letter-spacing: 1px;
+        vertical-alignment: center;
+    }
+}
+
+component StatCard inherits Rectangle {
+    in property <string> label: "";
+    in property <string> value: "";
+
+    border-radius: Theme.radius-md;
+    border-width: 1px;
+    border-color: Theme.border;
+    background: Theme.bg-panel;
+    min-height: 72px;
+
+    VerticalLayout {
+        padding: Theme.space-12;
+        spacing: 4px;
+        alignment: center;
+
+        Text {
+            text: label;
+            font-size: 10px;
+            font-weight: 700;
+            color: Theme.text-faint;
+            font-family: Theme.font-mono;
+            letter-spacing: 1px;
+            horizontal-alignment: center;
+        }
+        Text {
+            text: value;
+            font-size: 18px;
+            font-weight: 700;
+            color: Theme.text-primary;
+            font-family: Theme.font-mono;
+            horizontal-alignment: center;
+        }
+    }
+}
+
+component NodeRow inherits Rectangle {
+    in property <string> id: "";
+    in property <string> role: "";
+    in property <bool> own: false;
+
+    height: 36px;
+    border-radius: Theme.radius-sm;
+    background: own ? Theme.accent-muted : transparent;
+
+    HorizontalLayout {
+        padding-left: Theme.space-8;
+        padding-right: Theme.space-8;
+        spacing: Theme.space-12;
+        alignment: center;
+
+        Text {
+            text: id;
+            font-size: 13px;
+            font-weight: 600;
+            color: Theme.text-primary;
+            font-family: Theme.font-mono;
+        }
+        Rectangle { horizontal-stretch: 1; }
+        Text {
+            text: role;
+            font-size: 10px;
+            font-weight: 600;
+            color: own ? Theme.accent : Theme.text-faint;
+            font-family: Theme.font-mono;
+            letter-spacing: 1px;
+        }
+    }
+}
+
+component TrafficLine inherits VerticalLayout {
+    in property <string> time: "";
+    in property <string> who: "";
+    in property <string> body: "";
+    in property <bool> outbound: false;
+
+    spacing: 2px;
+
+    HorizontalLayout {
+        spacing: Theme.space-8;
+        alignment: center;
+
+        Text {
+            text: time;
+            font-size: 10px;
+            color: Theme.text-faint;
+            font-family: Theme.font-mono;
+            min-width: 62px;
+        }
+        Text {
+            text: who;
+            font-size: 10px;
+            font-weight: 700;
+            color: outbound ? Theme.accent : Theme.text-secondary;
+            font-family: Theme.font-mono;
+        }
+    }
+
+    Text {
+        text: body;
+        font-size: 12px;
+        color: Theme.text-primary;
+        font-family: Theme.font-sans;
+        wrap: word-wrap;
+    }
+}
+
+component SectionLabel inherits Text {
+    font-size: 10px;
+    font-weight: 700;
+    color: Theme.text-faint;
+    font-family: Theme.font-mono;
+    letter-spacing: 2px;
+}
+
+component Metric inherits HorizontalLayout {
+    in property <string> label: "";
+    in property <string> value: "";
+
+    spacing: Theme.space-8;
+    height: 22px;
+
+    Text {
+        text: label;
+        font-size: 11px;
+        color: Theme.text-faint;
+        font-family: Theme.font-mono;
+        min-width: 56px;
+        vertical-alignment: center;
+    }
+    Text {
+        text: value;
+        font-size: 13px;
+        font-weight: 600;
+        color: Theme.text-primary;
+        font-family: Theme.font-mono;
+        horizontal-stretch: 1;
+        overflow: elide;
+        vertical-alignment: center;
+    }
+}
+
+component ActionButton inherits Rectangle {
+    in property <string> label: "";
+    in property <bool> enabled: true;
+    in property <bool> emphasis: false;
+    callback clicked;
+
+    height: 36px;
+    border-radius: Theme.radius-sm;
+    border-width: 1px;
+    border-color: emphasis && enabled ? Theme.accent-dim : (enabled ? Theme.border-strong : Theme.border);
+    background: emphasis && enabled ? Theme.accent-muted : Theme.bg-panel;
+    opacity: enabled ? 1.0 : 0.45;
+
+    Text {
+        width: 100%; height: 100%;
+        text: label;
+        font-size: 11px;
+        font-weight: 600;
+        color: emphasis && enabled ? Theme.accent : (enabled ? Theme.text-secondary : Theme.text-faint);
+        font-family: Theme.font-mono;
+        letter-spacing: 1px;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+
+    states [
+        hover when ta.has-hover && enabled: {
+            border-color: Theme.border-accent;
+            background: Theme.bg-hover;
+        }
+    ]
+
+    ta := TouchArea {
+        enabled: root.enabled;
+        clicked => { root.clicked(); }
+        mouse-cursor: enabled ? pointer : default;
+    }
+}
+
+component HomeButton inherits Rectangle {
+    callback clicked;
+
+    width: 96px;
+    height: 30px;
+    border-radius: Theme.radius-sm;
+    border-width: 1px;
+    border-color: Theme.border;
+    background: Theme.bg-panel;
+
+    Text {
+        width: 100%; height: 100%;
+        text: "ESC  HOME";
+        font-size: 10px;
+        font-weight: 600;
+        color: Theme.text-muted;
+        font-family: Theme.font-mono;
+        letter-spacing: 1px;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+
+    TouchArea {
+        clicked => { root.clicked(); }
+        mouse-cursor: pointer;
+    }
+}
 export component MeshSurface inherits Rectangle {
     in property <string> readiness: "offline";
     in property <string> node-id: "—";
     in property <int> nodes-heard: 0;
     in property <string> last-rx: "—";
-    in property <string> region: "AU915";
+    in property <string> region: "—";
     in property <bool> tx-enabled: false;
+    in property <[MeshNode]> nodes;
 
-    // Simple message draft (UI only for now)
     in-out property <string> draft: "";
+    in property <[MeshLine]> messages;
 
     callback close;
     callback send-message;
@@ -93,44 +324,90 @@ export component MeshSurface inherits Rectangle {
                     border-color: Theme.border;
                     background: Theme.bg-panel;
                     vertical-stretch: 1;
-                    min-height: 180px;
+                    min-height: 120px;
 
-                    VerticalLayout {
+                    if nodes.length == 0: VerticalLayout {
                         padding: Theme.space-16;
+                        alignment: center;
                         spacing: Theme.space-8;
-
-                        if nodes-heard == 0: VerticalLayout {
-                            alignment: center;
-                            spacing: Theme.space-8;
-                            Rectangle { vertical-stretch: 1; }
-                            Text {
-                                text: readiness == "ok" || readiness == "active" ? "NO PEERS HEARD" : "RADIO OFFLINE";
-                                font-size: 12px;
-                                font-weight: 600;
-                                color: Theme.text-muted;
-                                font-family: Theme.font-mono;
-                                letter-spacing: 1px;
-                                horizontal-alignment: center;
-                            }
-                            Text {
-                                text: "Nodes will appear here when the mesh is active";
-                                font-size: 11px;
-                                color: Theme.text-faint;
-                                font-family: Theme.font-sans;
-                                horizontal-alignment: center;
-                            }
-                            Rectangle { vertical-stretch: 1; }
+                        Rectangle { vertical-stretch: 1; }
+                        Text {
+                            text: readiness == "offline" ? "RADIO OFFLINE" : "NO PEERS HEARD";
+                            font-size: 12px;
+                            font-weight: 600;
+                            color: Theme.text-muted;
+                            font-family: Theme.font-mono;
+                            letter-spacing: 1px;
+                            horizontal-alignment: center;
                         }
+                        Text {
+                            text: "Nodes will appear here when the mesh is active";
+                            font-size: 11px;
+                            color: Theme.text-faint;
+                            font-family: Theme.font-sans;
+                            horizontal-alignment: center;
+                        }
+                        Rectangle { vertical-stretch: 1; }
+                    }
 
-                        if nodes-heard > 0: VerticalLayout {
+                    if nodes.length > 0: Flickable {
+                        width: 100%;
+                        height: 100%;
+                        content-width: self.width;
+                        content-height: node-list.preferred-height;
+
+                        node-list := VerticalLayout {
+                            padding: Theme.space-16;
                             spacing: Theme.space-8;
 
-                            NodeRow { id: node-id; role: "THIS NODE"; self: true; }
-                            // Mock peers for demo feel when nodes > 0
-                            NodeRow { id: "!b2c3d4e5"; role: "PEER"; self: false; }
-                            NodeRow { id: "!c3d4e5f6"; role: "PEER"; self: false; }
-                            if nodes-heard > 2: NodeRow { id: "!d4e5f6a7"; role: "PEER"; self: false; }
-                            if nodes-heard > 3: NodeRow { id: "!e5f6a7b8"; role: "PEER"; self: false; }
+                            for node in nodes: NodeRow {
+                                id: node.id;
+                                role: node.role;
+                                own: node.own;
+                            }
+                        }
+                    }
+                }
+
+                SectionLabel { text: "TRAFFIC"; }
+
+                Rectangle {
+                    border-radius: Theme.radius-md;
+                    border-width: 1px;
+                    border-color: Theme.border;
+                    background: Theme.bg-panel;
+                    vertical-stretch: 1;
+                    min-height: 100px;
+
+                    if messages.length == 0: Text {
+                        width: 100%;
+                        height: 100%;
+                        text: "NO TRAFFIC";
+                        font-size: 11px;
+                        font-weight: 600;
+                        color: Theme.text-faint;
+                        font-family: Theme.font-mono;
+                        letter-spacing: 1px;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                    }
+
+                    if messages.length > 0: Flickable {
+                        width: 100%;
+                        height: 100%;
+                        content-width: self.width;
+                        content-height: traffic-list.preferred-height;
+
+                        traffic-list := VerticalLayout {
+                            padding: Theme.space-12;
+                            spacing: Theme.space-8;
+
+                            for msg in messages: TrafficLine {
+                                time: msg.time;
+                                who: msg.who;
+                                body: msg.body;
+                                outbound: msg.outbound;
+                            }
                         }
                     }
                 }
@@ -225,16 +502,17 @@ export component MeshSurface inherits Rectangle {
                             border-color: Theme.border;
                             background: Theme.bg-base;
 
-                            // Draft display (full text input later)
-                            Text {
-                                x: 10px; y: 8px;
-                                width: parent.width - 20px;
-                                height: parent.height - 16px;
-                                text: draft == "" ? "Message draft…" : draft;
+                            TextInput {
+                                x: 8px;
+                                y: 6px;
+                                width: parent.width - 16px;
+                                height: parent.height - 12px;
+                                text <=> root.draft;
                                 font-size: 12px;
-                                color: draft == "" ? Theme.text-faint : Theme.text-primary;
                                 font-family: Theme.font-sans;
+                                color: Theme.text-primary;
                                 wrap: word-wrap;
+                                single-line: false;
                             }
                         }
 
@@ -254,196 +532,3 @@ export component MeshSurface inherits Rectangle {
 }
 
 // Building blocks
-component TxBadge inherits Rectangle {
-    in property <bool> enabled: false;
-
-    height: 28px;
-    border-radius: Theme.radius-sm;
-    border-width: 1px;
-    border-color: enabled ? Theme.warn : Theme.border;
-    background: enabled ? #fbbf2422 : Theme.bg-panel;
-    padding-left: 10px;
-    padding-right: 10px;
-
-    Text {
-        text: enabled ? "TX ARMED" : "TX SAFE";
-        font-size: 10px;
-        font-weight: 700;
-        color: enabled ? Theme.warn : Theme.text-muted;
-        font-family: Theme.font-mono;
-        letter-spacing: 1px;
-        vertical-alignment: center;
-    }
-}
-
-component StatCard inherits Rectangle {
-    in property <string> label: "";
-    in property <string> value: "";
-
-    border-radius: Theme.radius-md;
-    border-width: 1px;
-    border-color: Theme.border;
-    background: Theme.bg-panel;
-    min-height: 72px;
-
-    VerticalLayout {
-        padding: Theme.space-12;
-        spacing: 4px;
-        alignment: center;
-
-        Text {
-            text: label;
-            font-size: 10px;
-            font-weight: 700;
-            color: Theme.text-faint;
-            font-family: Theme.font-mono;
-            letter-spacing: 1px;
-            horizontal-alignment: center;
-        }
-        Text {
-            text: value;
-            font-size: 18px;
-            font-weight: 700;
-            color: Theme.text-primary;
-            font-family: Theme.font-mono;
-            horizontal-alignment: center;
-        }
-    }
-}
-
-component NodeRow inherits Rectangle {
-    in property <string> id: "";
-    in property <string> role: "";
-    in property <bool> self: false;
-
-    height: 36px;
-    border-radius: Theme.radius-sm;
-    background: self ? Theme.accent-muted : transparent;
-
-    HorizontalLayout {
-        padding-left: Theme.space-8;
-        padding-right: Theme.space-8;
-        spacing: Theme.space-12;
-        alignment: center;
-
-        Text {
-            text: id;
-            font-size: 13px;
-            font-weight: 600;
-            color: Theme.text-primary;
-            font-family: Theme.font-mono;
-        }
-        Rectangle { horizontal-stretch: 1; }
-        Text {
-            text: role;
-            font-size: 10px;
-            font-weight: 600;
-            color: self ? Theme.accent : Theme.text-faint;
-            font-family: Theme.font-mono;
-            letter-spacing: 1px;
-        }
-    }
-}
-
-component SectionLabel inherits Text {
-    in property <string> text: "";
-    text: text;
-    font-size: 10px;
-    font-weight: 700;
-    color: Theme.text-faint;
-    font-family: Theme.font-mono;
-    letter-spacing: 2px;
-}
-
-component Metric inherits HorizontalLayout {
-    in property <string> label: "";
-    in property <string> value: "";
-
-    spacing: Theme.space-8;
-    height: 22px;
-
-    Text {
-        text: label;
-        font-size: 11px;
-        color: Theme.text-faint;
-        font-family: Theme.font-mono;
-        min-width: 56px;
-        vertical-alignment: center;
-    }
-    Text {
-        text: value;
-        font-size: 13px;
-        font-weight: 600;
-        color: Theme.text-primary;
-        font-family: Theme.font-mono;
-        horizontal-stretch: 1;
-        overflow: elide;
-        vertical-alignment: center;
-    }
-}
-
-component ActionButton inherits Rectangle {
-    in property <string> label: "";
-    in property <bool> enabled: true;
-    in property <bool> emphasis: false;
-    callback clicked;
-
-    height: 36px;
-    border-radius: Theme.radius-sm;
-    border-width: 1px;
-    border-color: emphasis && enabled ? Theme.accent-dim : (enabled ? Theme.border-strong : Theme.border);
-    background: emphasis && enabled ? Theme.accent-muted : Theme.bg-panel;
-    opacity: enabled ? 1.0 : 0.45;
-
-    Text {
-        width: 100%; height: 100%;
-        text: label;
-        font-size: 11px;
-        font-weight: 600;
-        color: emphasis && enabled ? Theme.accent : (enabled ? Theme.text-secondary : Theme.text-faint);
-        font-family: Theme.font-mono;
-        letter-spacing: 1px;
-        horizontal-alignment: center;
-        vertical-alignment: center;
-    }
-
-    TouchArea {
-        enabled: root.enabled;
-        clicked => { root.clicked(); }
-        mouse-cursor: enabled ? pointer : default;
-        states [
-            hover when self.has-hover && root.enabled: {
-                root.border-color: Theme.border-accent;
-                root.background: Theme.bg-hover;
-            }
-        ]
-    }
-}
-
-component HomeButton inherits Rectangle {
-    callback clicked;
-
-    width: 96px;
-    height: 30px;
-    border-radius: Theme.radius-sm;
-    border-width: 1px;
-    border-color: Theme.border;
-    background: Theme.bg-panel;
-
-    Text {
-        width: 100%; height: 100%;
-        text: "ESC  HOME";
-        font-size: 10px;
-        font-weight: 600;
-        color: Theme.text-muted;
-        font-family: Theme.font-mono;
-        letter-spacing: 1px;
-        horizontal-alignment: center;
-        vertical-alignment: center;
-    }
-
-    TouchArea {
-        clicked => { root.clicked(); }
-        mouse-cursor: pointer;
-    }
-}

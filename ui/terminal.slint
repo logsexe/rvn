@@ -2,6 +2,33 @@ import { Theme } from "theme.slint";
 
 // TERMINAL — operator command prompt
 
+component HomeButton inherits Rectangle {
+    callback clicked;
+
+    width: 96px;
+    height: 30px;
+    border-radius: Theme.radius-sm;
+    border-width: 1px;
+    border-color: Theme.border;
+    background: Theme.bg-panel;
+
+    Text {
+        width: 100%; height: 100%;
+        text: "ESC  HOME";
+        font-size: 10px;
+        font-weight: 600;
+        color: Theme.text-muted;
+        font-family: Theme.font-mono;
+        letter-spacing: 1px;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+
+    TouchArea {
+        clicked => { root.clicked(); }
+        mouse-cursor: pointer;
+    }
+}
 export component TerminalSurface inherits Rectangle {
     in-out property <string> output: "";
     in-out property <string> input: "";
@@ -66,8 +93,8 @@ export component TerminalSurface inherits Rectangle {
             Flickable {
                 width: 100%;
                 height: 100%;
-                viewport-width: self.width;
-                viewport-height: output-text.preferred-height + 24px;
+                content-width: self.width;
+                content-height: output-text.preferred-height + 24px;
 
                 output-text := Text {
                     x: 14px;
@@ -115,7 +142,7 @@ export component TerminalSurface inherits Rectangle {
                     enabled: !busy;
 
                     accepted => {
-                        if (root.input.trimmed() != "") {
+                        if (root.input != "") {
                             root.submit(root.input);
                         }
                     }
@@ -161,30 +188,3 @@ export component TerminalSurface inherits Rectangle {
     forward-focus: input-field;
 }
 
-component HomeButton inherits Rectangle {
-    callback clicked;
-
-    width: 96px;
-    height: 30px;
-    border-radius: Theme.radius-sm;
-    border-width: 1px;
-    border-color: Theme.border;
-    background: Theme.bg-panel;
-
-    Text {
-        width: 100%; height: 100%;
-        text: "ESC  HOME";
-        font-size: 10px;
-        font-weight: 600;
-        color: Theme.text-muted;
-        font-family: Theme.font-mono;
-        letter-spacing: 1px;
-        horizontal-alignment: center;
-        vertical-alignment: center;
-    }
-
-    TouchArea {
-        clicked => { root.clicked(); }
-        mouse-cursor: pointer;
-    }
-}

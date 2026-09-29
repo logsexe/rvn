@@ -3,6 +3,40 @@ import { Theme } from "theme.slint";
 // ----------------------------------------------------------
 // StatusDot
 // ----------------------------------------------------------
+
+component DataPill inherits HorizontalLayout {
+    in property <string> key: "";
+    in property <string> val: "";
+
+    spacing: 5px;
+    alignment: center;
+
+    Text {
+        text: key;
+        font-size: 10px;
+        font-weight: 600;
+        color: Theme.text-faint;
+        font-family: Theme.font-mono;
+        letter-spacing: 0.5px;
+    }
+
+    Text {
+        text: val;
+        font-size: 12px;
+        color: Theme.text-secondary;
+        font-family: Theme.font-mono;
+    }
+}
+
+component RectDivider inherits Rectangle {
+    width: 1px;
+    height: 16px;
+    background: Theme.border;
+}
+
+// ----------------------------------------------------------
+// TopBar
+// ----------------------------------------------------------
 export component StatusDot inherits Rectangle {
     in property <string> state: "offline";
 
@@ -43,16 +77,16 @@ export component SurfaceTile inherits Rectangle {
         easing: ease-out;
     }
 
-    TouchArea {
+    states [
+        hover when ta.has-hover && !selected: {
+            background: Theme.bg-hover;
+            border-color: Theme.border-strong;
+        }
+    ]
+
+    ta := TouchArea {
         clicked => { root.clicked(); }
         mouse-cursor: pointer;
-
-        states [
-            hover when self.has-hover && !root.selected: {
-                root.background: Theme.bg-hover;
-                root.border-color: Theme.border-strong;
-            }
-        ]
     }
 
     VerticalLayout {
@@ -97,9 +131,6 @@ export component SurfaceTile inherits Rectangle {
     }
 }
 
-// ----------------------------------------------------------
-// TopBar
-// ----------------------------------------------------------
 export component TopBar inherits Rectangle {
     in property <string> time-str: "00:00:00";
     in property <string> op-name: "STANDBY";
@@ -109,8 +140,13 @@ export component TopBar inherits Rectangle {
 
     height: 44px;
     background: Theme.bg-void;
-    border-width: 0 0 1px 0;
-    border-color: Theme.border;
+
+    Rectangle {
+        y: parent.height - 1px;
+        height: 1px;
+        width: 100%;
+        background: Theme.border;
+    }
 
     HorizontalLayout {
         padding-left: Theme.space-16;
@@ -160,32 +196,3 @@ export component TopBar inherits Rectangle {
     }
 }
 
-component DataPill inherits HorizontalLayout {
-    in property <string> key: "";
-    in property <string> val: "";
-
-    spacing: 5px;
-    alignment: center;
-
-    Text {
-        text: key;
-        font-size: 10px;
-        font-weight: 600;
-        color: Theme.text-faint;
-        font-family: Theme.font-mono;
-        letter-spacing: 0.5px;
-    }
-
-    Text {
-        text: val;
-        font-size: 12px;
-        color: Theme.text-secondary;
-        font-family: Theme.font-mono;
-    }
-}
-
-component RectDivider inherits Rectangle {
-    width: 1px;
-    height: 16px;
-    background: Theme.border;
-}

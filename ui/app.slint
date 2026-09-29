@@ -5,6 +5,7 @@ import { NavSurface } from "nav.slint";
 import { RadioSurface } from "radio.slint";
 import { MeshSurface } from "mesh.slint";
 import { TerminalSurface } from "terminal.slint";
+import { WaypointRow, MeshLine, MeshNode } from "models.slint";
 
 export component AppWindow inherits Window {
     title: "RVN";
@@ -66,6 +67,10 @@ export component AppWindow inherits Window {
     in-out property <string> nav-grid: "—";
     in-out property <string> nav-accuracy: "—";
     in-out property <string> nav-age: "—";
+    in-out property <bool> nav-tracking: false;
+    in-out property <int> nav-track-count: 0;
+    in-out property <string> nav-notice: "";
+    in-out property <[WaypointRow]> nav-waypoints;
 
     // RADIO
     in-out property <string> radio-readiness: "offline";
@@ -73,15 +78,19 @@ export component AppWindow inherits Window {
     in-out property <string> radio-freq: "—";
     in-out property <string> radio-rate: "—";
     in-out property <bool> radio-streaming: false;
+    in-out property <bool> radio-simulated: false;
+    in-out property <[float]> radio-spectrum;
 
     // MESH
     in-out property <string> mesh-readiness: "offline";
     in-out property <string> mesh-node-id: "—";
     in-out property <int> mesh-nodes-heard: 0;
     in-out property <string> mesh-last-rx: "—";
-    in-out property <string> mesh-region: "AU915";
+    in-out property <string> mesh-region: "—";
     in-out property <bool> mesh-tx-enabled: false;
+    in-out property <[MeshNode]> mesh-nodes;
     in-out property <string> mesh-draft: "";
+    in-out property <[MeshLine]> mesh-log;
 
     // TERMINAL
     in-out property <string> term-output: "";
@@ -96,8 +105,28 @@ export component AppWindow inherits Window {
     callback radio-toggle-stream();
     callback mesh-toggle-tx();
     callback mesh-send();
+    callback nav-mark();
+    callback nav-toggle-track();
+    callback nav-copy();
     callback term-submit(string);
     callback term-clear();
+
+    FocusScope {
+        width: 100%;
+        height: 100%;
+        key-pressed(event) => {
+            if (event.text == Key.Escape || event.text == "0") {
+                active-surface = -1;
+                go-home();
+                return accept;
+            }
+            if (event.text == "1") { active-surface = 0; surface-selected(0); return accept; }
+            if (event.text == "2") { active-surface = 1; surface-selected(1); return accept; }
+            if (event.text == "3") { active-surface = 2; surface-selected(2); return accept; }
+            if (event.text == "4") { active-surface = 3; surface-selected(3); return accept; }
+            if (event.text == "5") { active-surface = 4; surface-selected(4); return accept; }
+            return reject;
+        }
 
     VerticalLayout {
         spacing: 0;
@@ -132,7 +161,7 @@ export component AppWindow inherits Window {
                         }
                         Rectangle { horizontal-stretch: 1; }
                         Text {
-                            text: "5 SURFACES";
+                            text: "1-5 OPEN   ·   ESC HOME";
                             font-size: 11px;
                             color: Theme.text-faint;
                             font-family: Theme.font-mono;
@@ -201,7 +230,14 @@ export component AppWindow inherits Window {
                 grid-ref: nav-grid;
                 accuracy: nav-accuracy;
                 last-update: nav-age;
+                tracking: nav-tracking;
+                track-count: nav-track-count;
+                notice: nav-notice;
+                waypoints: nav-waypoints;
                 close => { active-surface = -1; go-home(); }
+                mark-waypoint => { nav-mark(); }
+                toggle-track => { nav-toggle-track(); }
+                copy-coords => { nav-copy(); }
             }
 
             if active-surface == 1: RadioSurface {
@@ -210,6 +246,8 @@ export component AppWindow inherits Window {
                 freq: radio-freq;
                 sample-rate: radio-rate;
                 streaming: radio-streaming;
+                simulated: radio-simulated;
+                spectrum: radio-spectrum;
                 close => { active-surface = -1; go-home(); }
                 tune-up => { radio-tune-up(); }
                 tune-down => { radio-tune-down(); }
@@ -223,7 +261,9 @@ export component AppWindow inherits Window {
                 last-rx: mesh-last-rx;
                 region: mesh-region;
                 tx-enabled: mesh-tx-enabled;
+                nodes: mesh-nodes;
                 draft <=> mesh-draft;
+                messages: mesh-log;
                 close => { active-surface = -1; go-home(); }
                 toggle-tx => { mesh-toggle-tx(); }
                 send-message => { mesh-send(); }
@@ -267,89 +307,5 @@ export component AppWindow inherits Window {
             }
         }
     }
-
-    focusable: true;
-    key-pressed(event) => {
-        if (event.text == Key.Escape) {
-            active-surface = -1;
-            go-home();
-            return accept;
-        }
-        return reject;
-    }
-}
-
-component PlaceholderSurface inherits Rectangle {
-    in property <string> name: "";
-    callback close;
-    background: Theme.bg-void;
-
-    VerticalLayout {
-        padding: Theme.space-24;
-        spacing: Theme.space-20;
-        HorizontalLayout {
-            Text {
-                text: name;
-                font-size: 20px;
-                font-weight: 700;
-                color: Theme.accent;
-                font-family: Theme.font-mono;
-                letter-spacing: 2px;
-            }
-            Rectangle { horizontal-stretch: 1; }
-            HomeButton { clicked => { root.close(); } }
-        }
-        Rectangle {
-            vertical-stretch: 1;
-            border-radius: Theme.radius-lg;
-            border-width: 1px;
-            border-color: Theme.border;
-            background: Theme.bg-panel;
-            VerticalLayout {
-                alignment: center;
-                spacing: Theme.space-8;
-                Text {
-                    text: "NOT YET COMMISSIONED";
-                    font-size: 13px;
-                    font-weight: 600;
-                    color: Theme.text-muted;
-                    font-family: Theme.font-mono;
-                    letter-spacing: 2px;
-                    horizontal-alignment: center;
-                }
-                Text {
-                    text: "Surface will come online after core stabilises";
-                    font-size: 12px;
-                    color: Theme.text-faint;
-                    font-family: Theme.font-sans;
-                    horizontal-alignment: center;
-                }
-            }
-        }
-    }
-}
-
-component HomeButton inherits Rectangle {
-    callback clicked;
-    width: 96px;
-    height: 30px;
-    border-radius: Theme.radius-sm;
-    border-width: 1px;
-    border-color: Theme.border;
-    background: Theme.bg-panel;
-    Text {
-        width: 100%; height: 100%;
-        text: "ESC  HOME";
-        font-size: 10px;
-        font-weight: 600;
-        color: Theme.text-muted;
-        font-family: Theme.font-mono;
-        letter-spacing: 1px;
-        horizontal-alignment: center;
-        vertical-alignment: center;
-    }
-    TouchArea {
-        clicked => { root.clicked(); }
-        mouse-cursor: pointer;
     }
 }

@@ -3,6 +3,111 @@ import { StatusDot } from "components.slint";
 
 // SYSTEM — platform instrument panel
 
+component SectionLabel inherits Text {
+    font-size: 10px;
+    font-weight: 700;
+    color: Theme.text-faint;
+    font-family: Theme.font-mono;
+    letter-spacing: 2px;
+}
+
+component InstrumentCard inherits Rectangle {
+    in property <string> title: "";
+    in property <string> status: "offline";
+
+    border-radius: Theme.radius-md;
+    border-width: 1px;
+    border-color: Theme.border;
+    background: Theme.bg-panel;
+
+    VerticalLayout {
+        padding: Theme.space-16;
+        spacing: Theme.space-8;
+
+        HorizontalLayout {
+            alignment: center;
+            spacing: Theme.space-8;
+
+            Text {
+                text: title;
+                font-size: 11px;
+                font-weight: 700;
+                color: Theme.text-secondary;
+                font-family: Theme.font-mono;
+                letter-spacing: 1.5px;
+            }
+
+            Rectangle { horizontal-stretch: 1; }
+            StatusDot { state: status; }
+        }
+
+        @children
+    }
+}
+
+component Metric inherits HorizontalLayout {
+    in property <string> label: "";
+    in property <string> value: "";
+    in property <bool> warn: false;
+
+    spacing: Theme.space-8;
+    height: 22px;
+
+    Text {
+        text: label;
+        font-size: 11px;
+        color: Theme.text-faint;
+        font-family: Theme.font-mono;
+        min-width: 64px;
+        vertical-alignment: center;
+    }
+
+    Text {
+        text: value;
+        font-size: 13px;
+        font-weight: 600;
+        color: warn ? Theme.warn : Theme.text-primary;
+        font-family: Theme.font-mono;
+        horizontal-stretch: 1;
+        overflow: elide;
+        vertical-alignment: center;
+    }
+}
+
+component HomeButton inherits Rectangle {
+    callback clicked;
+
+    width: 96px;
+    height: 30px;
+    border-radius: Theme.radius-sm;
+    border-width: 1px;
+    border-color: Theme.border;
+    background: Theme.bg-panel;
+
+    Text {
+        width: 100%; height: 100%;
+        text: "ESC  HOME";
+        font-size: 10px;
+        font-weight: 600;
+        color: Theme.text-muted;
+        font-family: Theme.font-mono;
+        letter-spacing: 1px;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+
+    states [
+        hover when ta.has-hover: {
+            border-color: Theme.border-strong;
+            background: Theme.bg-hover;
+        }
+    ]
+
+    ta := TouchArea {
+        clicked => { root.clicked(); }
+        mouse-cursor: pointer;
+    }
+}
 export component SystemSurface inherits Rectangle {
     in property <string> cpu-model: "Raspberry Pi 5";
     in property <float> cpu-percent: 0;
@@ -164,110 +269,3 @@ export component SystemSurface inherits Rectangle {
 // Local building blocks
 // ----------------------------------------------------------
 
-component SectionLabel inherits Text {
-    in property <string> text: "";
-    text: text;
-    font-size: 10px;
-    font-weight: 700;
-    color: Theme.text-faint;
-    font-family: Theme.font-mono;
-    letter-spacing: 2px;
-}
-
-component InstrumentCard inherits Rectangle {
-    in property <string> title: "";
-    in property <string> status: "offline";
-
-    border-radius: Theme.radius-md;
-    border-width: 1px;
-    border-color: Theme.border;
-    background: Theme.bg-panel;
-
-    VerticalLayout {
-        padding: Theme.space-16;
-        spacing: Theme.space-8;
-
-        HorizontalLayout {
-            alignment: center;
-            spacing: Theme.space-8;
-
-            Text {
-                text: title;
-                font-size: 11px;
-                font-weight: 700;
-                color: Theme.text-secondary;
-                font-family: Theme.font-mono;
-                letter-spacing: 1.5px;
-            }
-
-            Rectangle { horizontal-stretch: 1; }
-            StatusDot { state: status; }
-        }
-
-        @children
-    }
-}
-
-component Metric inherits HorizontalLayout {
-    in property <string> label: "";
-    in property <string> value: "";
-    in property <bool> warn: false;
-
-    spacing: Theme.space-8;
-    height: 22px;
-
-    Text {
-        text: label;
-        font-size: 11px;
-        color: Theme.text-faint;
-        font-family: Theme.font-mono;
-        min-width: 64px;
-        vertical-alignment: center;
-    }
-
-    Text {
-        text: value;
-        font-size: 13px;
-        font-weight: 600;
-        color: warn ? Theme.warn : Theme.text-primary;
-        font-family: Theme.font-mono;
-        horizontal-stretch: 1;
-        overflow: elide;
-        vertical-alignment: center;
-    }
-}
-
-component HomeButton inherits Rectangle {
-    callback clicked;
-
-    width: 96px;
-    height: 30px;
-    border-radius: Theme.radius-sm;
-    border-width: 1px;
-    border-color: Theme.border;
-    background: Theme.bg-panel;
-
-    Text {
-        width: 100%; height: 100%;
-        text: "ESC  HOME";
-        font-size: 10px;
-        font-weight: 600;
-        color: Theme.text-muted;
-        font-family: Theme.font-mono;
-        letter-spacing: 1px;
-        horizontal-alignment: center;
-        vertical-alignment: center;
-    }
-
-    TouchArea {
-        clicked => { root.clicked(); }
-        mouse-cursor: pointer;
-
-        states [
-            hover when self.has-hover: {
-                root.border-color: Theme.border-strong;
-                root.background: Theme.bg-hover;
-            }
-        ]
-    }
-}

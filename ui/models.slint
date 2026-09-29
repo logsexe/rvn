@@ -1,0 +1,20 @@
+// Shared row types passed from Rust into the surfaces.
+
+export struct WaypointRow {
+    name: string,
+    coords: string,
+    marked: string,
+}
+
+export struct MeshLine {
+    time: string,
+    who: string,
+    body: string,
+    outbound: bool,
+}
+
+export struct MeshNode {
+    id: string,
+    role: string,
+    own: bool,
+}

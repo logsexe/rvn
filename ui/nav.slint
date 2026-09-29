@@ -1,8 +1,244 @@
 import { Theme } from "theme.slint";
 import { StatusDot } from "components.slint";
+import { WaypointRow } from "models.slint";
 
 // NAV — position, fix quality, and field orientation
 
+component FixBadge inherits Rectangle {
+    in property <string> fix: "NO FIX";
+    in property <string> readiness: "offline";
+
+    height: 28px;
+    border-radius: Theme.radius-sm;
+    border-width: 1px;
+    border-color: readiness == "ok" || readiness == "active" ? Theme.accent-dim :
+                  readiness == "warn" ? Theme.warn : Theme.border;
+    background: readiness == "ok" || readiness == "active" ? Theme.accent-muted :
+                Theme.bg-panel;
+    padding-left: 10px;
+    padding-right: 10px;
+
+    HorizontalLayout {
+        spacing: 6px;
+        alignment: center;
+
+        StatusDot { state: readiness; }
+
+        Text {
+            text: fix;
+            font-size: 11px;
+            font-weight: 700;
+            color: readiness == "ok" || readiness == "active" ? Theme.accent :
+                   readiness == "warn" ? Theme.warn : Theme.text-muted;
+            font-family: Theme.font-mono;
+            letter-spacing: 1px;
+            vertical-alignment: center;
+        }
+    }
+}
+
+component CoordinateRow inherits HorizontalLayout {
+    in property <string> axis: "";
+    in property <string> value: "";
+    in property <bool> large: false;
+
+    spacing: Theme.space-16;
+    alignment: center;
+
+    Text {
+        text: axis;
+        font-size: large ? 14px : 12px;
+        font-weight: 700;
+        color: Theme.text-faint;
+        font-family: Theme.font-mono;
+        letter-spacing: 2px;
+        min-width: 40px;
+    }
+
+    Text {
+        text: value;
+        font-size: large ? 28px : 16px;
+        font-weight: 600;
+        color: Theme.text-primary;
+        font-family: Theme.font-mono;
+        horizontal-stretch: 1;
+    }
+}
+
+component MiniMetric inherits Rectangle {
+    in property <string> label: "";
+    in property <string> value: "";
+
+    border-radius: Theme.radius-md;
+    border-width: 1px;
+    border-color: Theme.border;
+    background: Theme.bg-panel;
+    min-height: 64px;
+
+    VerticalLayout {
+        padding: Theme.space-12;
+        spacing: 4px;
+        alignment: center;
+
+        Text {
+            text: label;
+            font-size: 10px;
+            font-weight: 700;
+            color: Theme.text-faint;
+            font-family: Theme.font-mono;
+            letter-spacing: 1px;
+        }
+        Text {
+            text: value;
+            font-size: 16px;
+            font-weight: 600;
+            color: Theme.text-primary;
+            font-family: Theme.font-mono;
+        }
+    }
+}
+
+component WaypointLine inherits Rectangle {
+    in property <string> name: "";
+    in property <string> coords: "";
+    in property <string> marked: "";
+
+    height: 36px;
+
+    VerticalLayout {
+        alignment: center;
+        spacing: 1px;
+
+        HorizontalLayout {
+            spacing: Theme.space-8;
+            alignment: center;
+
+            Text {
+                text: name;
+                font-size: 11px;
+                font-weight: 700;
+                color: Theme.accent;
+                font-family: Theme.font-mono;
+                min-width: 52px;
+            }
+            Rectangle { horizontal-stretch: 1; }
+            Text {
+                text: marked;
+                font-size: 10px;
+                color: Theme.text-faint;
+                font-family: Theme.font-mono;
+            }
+        }
+
+        Text {
+            text: coords;
+            font-size: 12px;
+            color: Theme.text-primary;
+            font-family: Theme.font-mono;
+        }
+    }
+}
+
+component SectionLabel inherits Text {
+    font-size: 10px;
+    font-weight: 700;
+    color: Theme.text-faint;
+    font-family: Theme.font-mono;
+    letter-spacing: 2px;
+}
+
+component Metric inherits HorizontalLayout {
+    in property <string> label: "";
+    in property <string> value: "";
+
+    spacing: Theme.space-8;
+    height: 22px;
+
+    Text {
+        text: label;
+        font-size: 11px;
+        color: Theme.text-faint;
+        font-family: Theme.font-mono;
+        min-width: 72px;
+        vertical-alignment: center;
+    }
+    Text {
+        text: value;
+        font-size: 13px;
+        font-weight: 600;
+        color: Theme.text-primary;
+        font-family: Theme.font-mono;
+        horizontal-stretch: 1;
+        overflow: elide;
+        vertical-alignment: center;
+    }
+}
+
+component ActionButton inherits Rectangle {
+    in property <string> label: "";
+    in property <bool> enabled: true;
+    callback clicked;
+
+    height: 36px;
+    border-radius: Theme.radius-sm;
+    border-width: 1px;
+    border-color: enabled ? Theme.border-strong : Theme.border;
+    background: Theme.bg-panel;
+    opacity: enabled ? 1.0 : 0.45;
+
+    Text {
+        width: 100%; height: 100%;
+        text: label;
+        font-size: 11px;
+        font-weight: 600;
+        color: enabled ? Theme.text-secondary : Theme.text-faint;
+        font-family: Theme.font-mono;
+        letter-spacing: 1px;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+
+    states [
+        hover when ta.has-hover && enabled: {
+            border-color: Theme.border-accent;
+            background: Theme.bg-hover;
+        }
+    ]
+
+    ta := TouchArea {
+        enabled: root.enabled;
+        clicked => { root.clicked(); }
+        mouse-cursor: enabled ? pointer : default;
+    }
+}
+
+component HomeButton inherits Rectangle {
+    callback clicked;
+
+    width: 96px;
+    height: 30px;
+    border-radius: Theme.radius-sm;
+    border-width: 1px;
+    border-color: Theme.border;
+    background: Theme.bg-panel;
+
+    Text {
+        width: 100%; height: 100%;
+        text: "ESC  HOME";
+        font-size: 10px;
+        font-weight: 600;
+        color: Theme.text-muted;
+        font-family: Theme.font-mono;
+        letter-spacing: 1px;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+
+    TouchArea {
+        clicked => { root.clicked(); }
+        mouse-cursor: pointer;
+    }
+}
 export component NavSurface inherits Rectangle {
     // Fix
     in property <string> readiness: "offline";
@@ -18,8 +254,15 @@ export component NavSurface inherits Rectangle {
     in property <string> grid-ref: "—";
     in property <string> accuracy: "—";
     in property <string> last-update: "—";
+    in property <bool> tracking: false;
+    in property <int> track-count: 0;
+    in property <string> notice: "";
+    in property <[WaypointRow]> waypoints;
 
     callback close;
+    callback mark-waypoint;
+    callback toggle-track;
+    callback copy-coords;
 
     background: Theme.bg-void;
 
@@ -184,26 +427,68 @@ export component NavSurface inherits Rectangle {
                     ActionButton {
                         label: "MARK WAYPOINT";
                         enabled: readiness == "ok" || readiness == "active";
+                        clicked => { root.mark-waypoint(); }
                     }
                     ActionButton {
-                        label: "START TRACK";
-                        enabled: readiness == "ok" || readiness == "active";
+                        label: tracking ? "STOP TRACK" : "START TRACK";
+                        enabled: tracking || readiness == "ok" || readiness == "active";
+                        clicked => { root.toggle-track(); }
                     }
                     ActionButton {
                         label: "COPY COORDS";
                         enabled: lat != "—";
+                        clicked => { root.copy-coords(); }
                     }
                 }
 
-                Rectangle { vertical-stretch: 1; }
-
-                // Quiet note
                 Text {
-                    text: "Maps and tracks will layer on once core position is solid.";
+                    text: notice != "" ? notice : (tracking ? "TRACKING · " + track-count + " PTS" : "Mark a fix to drop a waypoint.");
                     font-size: 11px;
-                    color: Theme.text-faint;
-                    font-family: Theme.font-sans;
+                    color: notice != "" || tracking ? Theme.accent : Theme.text-faint;
+                    font-family: Theme.font-mono;
                     wrap: word-wrap;
+                }
+
+                SectionLabel { text: tracking ? "TRACK · " + track-count + " PTS" : "WAYPOINTS"; }
+
+                Rectangle {
+                    vertical-stretch: 1;
+                    border-radius: Theme.radius-md;
+                    border-width: 1px;
+                    border-color: Theme.border;
+                    background: Theme.bg-panel;
+                    min-height: 80px;
+
+                    if waypoints.length == 0: Text {
+                        width: 100%;
+                        height: 100%;
+                        text: "NONE MARKED";
+                        font-size: 11px;
+                        font-weight: 600;
+                        color: Theme.text-faint;
+                        font-family: Theme.font-mono;
+                        letter-spacing: 1px;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                    }
+
+                    if waypoints.length > 0: Flickable {
+                        width: 100%;
+                        height: 100%;
+                        content-width: self.width;
+                        content-height: wp-list.preferred-height;
+
+                        wp-list := VerticalLayout {
+                            padding: Theme.space-8;
+                            spacing: 2px;
+
+                            for wp in waypoints: WaypointLine {
+                                name: wp.name;
+                                coords: wp.coords;
+                                marked: wp.marked;
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -214,199 +499,3 @@ export component NavSurface inherits Rectangle {
 // Building blocks
 // ----------------------------------------------------------
 
-component FixBadge inherits Rectangle {
-    in property <string> fix: "NO FIX";
-    in property <string> readiness: "offline";
-
-    height: 28px;
-    border-radius: Theme.radius-sm;
-    border-width: 1px;
-    border-color: readiness == "ok" || readiness == "active" ? Theme.accent-dim :
-                  readiness == "warn" ? Theme.warn : Theme.border;
-    background: readiness == "ok" || readiness == "active" ? Theme.accent-muted :
-                Theme.bg-panel;
-    padding-left: 10px;
-    padding-right: 10px;
-
-    HorizontalLayout {
-        spacing: 6px;
-        alignment: center;
-
-        StatusDot { state: readiness; }
-
-        Text {
-            text: fix;
-            font-size: 11px;
-            font-weight: 700;
-            color: readiness == "ok" || readiness == "active" ? Theme.accent :
-                   readiness == "warn" ? Theme.warn : Theme.text-muted;
-            font-family: Theme.font-mono;
-            letter-spacing: 1px;
-            vertical-alignment: center;
-        }
-    }
-}
-
-component CoordinateRow inherits HorizontalLayout {
-    in property <string> axis: "";
-    in property <string> value: "";
-    in property <bool> large: false;
-
-    spacing: Theme.space-16;
-    alignment: center;
-
-    Text {
-        text: axis;
-        font-size: large ? 14px : 12px;
-        font-weight: 700;
-        color: Theme.text-faint;
-        font-family: Theme.font-mono;
-        letter-spacing: 2px;
-        min-width: 40px;
-    }
-
-    Text {
-        text: value;
-        font-size: large ? 28px : 16px;
-        font-weight: 600;
-        color: Theme.text-primary;
-        font-family: Theme.font-mono;
-        horizontal-stretch: 1;
-    }
-}
-
-component MiniMetric inherits Rectangle {
-    in property <string> label: "";
-    in property <string> value: "";
-
-    border-radius: Theme.radius-md;
-    border-width: 1px;
-    border-color: Theme.border;
-    background: Theme.bg-panel;
-    min-height: 64px;
-
-    VerticalLayout {
-        padding: Theme.space-12;
-        spacing: 4px;
-        alignment: center;
-
-        Text {
-            text: label;
-            font-size: 10px;
-            font-weight: 700;
-            color: Theme.text-faint;
-            font-family: Theme.font-mono;
-            letter-spacing: 1px;
-        }
-        Text {
-            text: value;
-            font-size: 16px;
-            font-weight: 600;
-            color: Theme.text-primary;
-            font-family: Theme.font-mono;
-        }
-    }
-}
-
-component SectionLabel inherits Text {
-    in property <string> text: "";
-    text: text;
-    font-size: 10px;
-    font-weight: 700;
-    color: Theme.text-faint;
-    font-family: Theme.font-mono;
-    letter-spacing: 2px;
-}
-
-component Metric inherits HorizontalLayout {
-    in property <string> label: "";
-    in property <string> value: "";
-
-    spacing: Theme.space-8;
-    height: 22px;
-
-    Text {
-        text: label;
-        font-size: 11px;
-        color: Theme.text-faint;
-        font-family: Theme.font-mono;
-        min-width: 72px;
-        vertical-alignment: center;
-    }
-    Text {
-        text: value;
-        font-size: 13px;
-        font-weight: 600;
-        color: Theme.text-primary;
-        font-family: Theme.font-mono;
-        horizontal-stretch: 1;
-        overflow: elide;
-        vertical-alignment: center;
-    }
-}
-
-component ActionButton inherits Rectangle {
-    in property <string> label: "";
-    in property <bool> enabled: true;
-    callback clicked;
-
-    height: 36px;
-    border-radius: Theme.radius-sm;
-    border-width: 1px;
-    border-color: enabled ? Theme.border-strong : Theme.border;
-    background: Theme.bg-panel;
-    opacity: enabled ? 1.0 : 0.45;
-
-    Text {
-        width: 100%; height: 100%;
-        text: label;
-        font-size: 11px;
-        font-weight: 600;
-        color: enabled ? Theme.text-secondary : Theme.text-faint;
-        font-family: Theme.font-mono;
-        letter-spacing: 1px;
-        horizontal-alignment: center;
-        vertical-alignment: center;
-    }
-
-    TouchArea {
-        enabled: root.enabled;
-        clicked => { root.clicked(); }
-        mouse-cursor: enabled ? pointer : default;
-
-        states [
-            hover when self.has-hover && root.enabled: {
-                root.border-color: Theme.border-accent;
-                root.background: Theme.bg-hover;
-            }
-        ]
-    }
-}
-
-component HomeButton inherits Rectangle {
-    callback clicked;
-
-    width: 96px;
-    height: 30px;
-    border-radius: Theme.radius-sm;
-    border-width: 1px;
-    border-color: Theme.border;
-    background: Theme.bg-panel;
-
-    Text {
-        width: 100%; height: 100%;
-        text: "ESC  HOME";
-        font-size: 10px;
-        font-weight: 600;
-        color: Theme.text-muted;
-        font-family: Theme.font-mono;
-        letter-spacing: 1px;
-        horizontal-alignment: center;
-        vertical-alignment: center;
-    }
-
-    TouchArea {
-        clicked => { root.clicked(); }
-        mouse-cursor: pointer;
-    }
-}

@@ -120,6 +120,11 @@ pub struct GpsStatus {
     pub longitude: Option<f64>,
     pub altitude_m: Option<f32>,
     pub speed_kmh: Option<f32>,
+    pub course_deg: Option<f32>,
+    /// Horizontal dilution of precision from the latest GGA, when the receiver sent one.
+    pub hdop: Option<f32>,
+    /// Milliseconds since the last accepted NMEA sentence.
+    pub age_ms: Option<u64>,
 }
 
 impl Default for GpsStatus {
@@ -132,6 +137,9 @@ impl Default for GpsStatus {
             longitude: None,
             altitude_m: None,
             speed_kmh: None,
+            course_deg: None,
+            hdop: None,
+            age_ms: None,
         }
     }
 }
@@ -156,23 +164,39 @@ impl GpsFix {
     }
 }
 
+/// Bins drawn across the RADIO spectrum plot.
+pub const SPECTRUM_BINS: usize = 48;
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RadioStatus {
     pub readiness: Readiness,
     pub device: String,
     pub center_freq_mhz: f32,
     pub sample_rate: u32,
+    /// True when the bins are a stand-in rather than samples from a dongle.
+    pub simulated: bool,
+    pub spectrum: Vec<f32>,
 }
 
 impl Default for RadioStatus {
     fn default() -> Self {
         Self {
             readiness: Readiness::NotPresent,
-            device: "RTL-SDR".into(),
+            device: "—".into(),
             center_freq_mhz: 0.0,
             sample_rate: 0,
+            simulated: false,
+            spectrum: vec![0.0; SPECTRUM_BINS],
         }
     }
+}
+
+/// One row in the MESH node list.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MeshPeer {
+    pub id: String,
+    pub role: String,
+    pub own: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -181,6 +205,9 @@ pub struct MeshStatus {
     pub node_id: String,
     pub nodes_heard: u32,
     pub last_rx: Option<String>,
+    /// LoRa region reported by the radio. Live adapters leave this blank until a region is read.
+    pub region: String,
+    pub peers: Vec<MeshPeer>,
 }
 
 impl Default for MeshStatus {
@@ -190,6 +217,8 @@ impl Default for MeshStatus {
             node_id: "—".into(),
             nodes_heard: 0,
             last_rx: None,
+            region: "—".into(),
+            peers: Vec::new(),
         }
     }
 }

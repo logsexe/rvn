@@ -3,6 +3,165 @@ import { StatusDot } from "components.slint";
 
 // RADIO — receive-only SDR instrument
 
+component ModeBadge inherits Rectangle {
+    in property <string> text: "";
+
+    height: 28px;
+    border-radius: Theme.radius-sm;
+    border-width: 1px;
+    border-color: Theme.accent-dim;
+    background: Theme.accent-muted;
+    padding-left: 10px;
+    padding-right: 10px;
+
+    Text {
+        text: text;
+        font-size: 10px;
+        font-weight: 700;
+        color: Theme.accent;
+        font-family: Theme.font-mono;
+        letter-spacing: 1px;
+        vertical-alignment: center;
+    }
+}
+
+component SectionLabel inherits Text {
+    font-size: 10px;
+    font-weight: 700;
+    color: Theme.text-faint;
+    font-family: Theme.font-mono;
+    letter-spacing: 2px;
+}
+
+component Metric inherits HorizontalLayout {
+    in property <string> label: "";
+    in property <string> value: "";
+
+    spacing: Theme.space-8;
+    height: 22px;
+
+    Text {
+        text: label;
+        font-size: 11px;
+        color: Theme.text-faint;
+        font-family: Theme.font-mono;
+        min-width: 64px;
+        vertical-alignment: center;
+    }
+    Text {
+        text: value;
+        font-size: 13px;
+        font-weight: 600;
+        color: Theme.text-primary;
+        font-family: Theme.font-mono;
+        horizontal-stretch: 1;
+        overflow: elide;
+        vertical-alignment: center;
+    }
+}
+
+component TuneButton inherits Rectangle {
+    in property <string> label: "";
+    callback clicked;
+
+    height: 36px;
+    min-width: 100px;
+    border-radius: Theme.radius-sm;
+    border-width: 1px;
+    border-color: Theme.border-strong;
+    background: Theme.bg-panel;
+
+    Text {
+        width: 100%; height: 100%;
+        text: label;
+        font-size: 11px;
+        font-weight: 600;
+        color: Theme.text-secondary;
+        font-family: Theme.font-mono;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+
+    states [
+        hover when ta.has-hover: {
+            border-color: Theme.border-accent;
+            background: Theme.bg-hover;
+        }
+    ]
+
+    ta := TouchArea {
+        clicked => { root.clicked(); }
+        mouse-cursor: pointer;
+    }
+}
+
+component ActionButton inherits Rectangle {
+    in property <string> label: "";
+    in property <bool> enabled: true;
+    in property <bool> emphasis: false;
+    callback clicked;
+
+    height: 36px;
+    min-width: 110px;
+    border-radius: Theme.radius-sm;
+    border-width: 1px;
+    border-color: emphasis && enabled ? Theme.accent-dim : (enabled ? Theme.border-strong : Theme.border);
+    background: emphasis && enabled ? Theme.accent-muted : Theme.bg-panel;
+    opacity: enabled ? 1.0 : 0.45;
+
+    Text {
+        width: 100%; height: 100%;
+        text: label;
+        font-size: 11px;
+        font-weight: 600;
+        color: emphasis && enabled ? Theme.accent : (enabled ? Theme.text-secondary : Theme.text-faint);
+        font-family: Theme.font-mono;
+        letter-spacing: 1px;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+
+    states [
+        hover when ta.has-hover && enabled: {
+            border-color: Theme.border-accent;
+            background: Theme.bg-hover;
+        }
+    ]
+
+    ta := TouchArea {
+        enabled: root.enabled;
+        clicked => { root.clicked(); }
+        mouse-cursor: enabled ? pointer : default;
+    }
+}
+
+component HomeButton inherits Rectangle {
+    callback clicked;
+
+    width: 96px;
+    height: 30px;
+    border-radius: Theme.radius-sm;
+    border-width: 1px;
+    border-color: Theme.border;
+    background: Theme.bg-panel;
+
+    Text {
+        width: 100%; height: 100%;
+        text: "ESC  HOME";
+        font-size: 10px;
+        font-weight: 600;
+        color: Theme.text-muted;
+        font-family: Theme.font-mono;
+        letter-spacing: 1px;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+
+    TouchArea {
+        clicked => { root.clicked(); }
+        mouse-cursor: pointer;
+    }
+}
 export component RadioSurface inherits Rectangle {
     in property <string> readiness: "offline";
     in property <string> device: "—";
@@ -10,6 +169,8 @@ export component RadioSurface inherits Rectangle {
     in property <string> sample-rate: "—";
     in property <string> mode: "RECEIVE ONLY";
     in property <bool> streaming: false;
+    in property <bool> simulated: false;
+    in property <[float]> spectrum;
 
     callback close;
     callback tune-up;
@@ -112,14 +273,28 @@ export component RadioSurface inherits Rectangle {
                     ActionButton {
                         label: streaming ? "STOP RX" : "START RX";
                         emphasis: true;
-                        enabled: readiness == "ok" || readiness == "active";
+                        enabled: readiness == "ok" || readiness == "active" || readiness == "warn";
                         clicked => { root.toggle-stream(); }
                     }
                 }
 
-                SectionLabel { text: "SPECTRUM"; }
+                HorizontalLayout {
+                    alignment: center;
+                    spacing: Theme.space-8;
 
-                // Placeholder waterfall / spectrum area
+                    SectionLabel { text: "SPECTRUM"; }
+                    Rectangle { horizontal-stretch: 1; }
+                    Text {
+                        text: streaming ? (simulated ? "SIM" : "LIVE") : "";
+                        font-size: 10px;
+                        font-weight: 700;
+                        color: Theme.text-faint;
+                        font-family: Theme.font-mono;
+                        letter-spacing: 1px;
+                        vertical-alignment: center;
+                    }
+                }
+
                 Rectangle {
                     border-radius: Theme.radius-md;
                     border-width: 1px;
@@ -128,12 +303,38 @@ export component RadioSurface inherits Rectangle {
                     vertical-stretch: 1;
                     min-height: 160px;
 
-                    VerticalLayout {
+                    if streaming && (readiness == "ok" || readiness == "active" || readiness == "warn"): HorizontalLayout {
+                        width: 100%;
+                        height: 100%;
+                        padding-left: 12px;
+                        padding-right: 12px;
+                        padding-top: 16px;
+                        padding-bottom: 12px;
+                        spacing: 2px;
+
+                        for bin in spectrum: Rectangle {
+                            horizontal-stretch: 1;
+                            vertical-stretch: 1;
+
+                            Rectangle {
+                                x: 0px;
+                                width: parent.width;
+                                y: (1 - bin) * parent.height;
+                                height: max(bin * parent.height, 1px);
+                                background: bin > 0.72 ? Theme.warn : Theme.accent;
+                                border-radius: 1px;
+                            }
+                        }
+                    }
+
+                    if !streaming || (readiness != "ok" && readiness != "active" && readiness != "warn"): VerticalLayout {
+                        width: 100%;
+                        height: 100%;
                         alignment: center;
                         spacing: Theme.space-8;
 
                         Text {
-                            text: readiness == "ok" || readiness == "active" ? "WATERFALL READY" : "NO DEVICE";
+                            text: readiness == "ok" || readiness == "active" || readiness == "warn" ? "WATERFALL IDLE" : "NO DEVICE";
                             font-size: 12px;
                             font-weight: 600;
                             color: Theme.text-muted;
@@ -142,7 +343,7 @@ export component RadioSurface inherits Rectangle {
                             horizontal-alignment: center;
                         }
                         Text {
-                            text: "Live FFT will render here when SDR is commissioned";
+                            text: readiness == "ok" || readiness == "active" || readiness == "warn" ? (simulated ? "Start RX to plot a simulated spectrum" : "Start RX to plot the spectrum") : "SDR will appear here when the dongle is attached";
                             font-size: 11px;
                             color: Theme.text-faint;
                             font-family: Theme.font-sans;
@@ -232,162 +433,3 @@ export component RadioSurface inherits Rectangle {
 }
 
 // Building blocks
-component ModeBadge inherits Rectangle {
-    in property <string> text: "";
-
-    height: 28px;
-    border-radius: Theme.radius-sm;
-    border-width: 1px;
-    border-color: Theme.accent-dim;
-    background: Theme.accent-muted;
-    padding-left: 10px;
-    padding-right: 10px;
-
-    Text {
-        text: text;
-        font-size: 10px;
-        font-weight: 700;
-        color: Theme.accent;
-        font-family: Theme.font-mono;
-        letter-spacing: 1px;
-        vertical-alignment: center;
-    }
-}
-
-component SectionLabel inherits Text {
-    in property <string> text: "";
-    text: text;
-    font-size: 10px;
-    font-weight: 700;
-    color: Theme.text-faint;
-    font-family: Theme.font-mono;
-    letter-spacing: 2px;
-}
-
-component Metric inherits HorizontalLayout {
-    in property <string> label: "";
-    in property <string> value: "";
-
-    spacing: Theme.space-8;
-    height: 22px;
-
-    Text {
-        text: label;
-        font-size: 11px;
-        color: Theme.text-faint;
-        font-family: Theme.font-mono;
-        min-width: 64px;
-        vertical-alignment: center;
-    }
-    Text {
-        text: value;
-        font-size: 13px;
-        font-weight: 600;
-        color: Theme.text-primary;
-        font-family: Theme.font-mono;
-        horizontal-stretch: 1;
-        overflow: elide;
-        vertical-alignment: center;
-    }
-}
-
-component TuneButton inherits Rectangle {
-    in property <string> label: "";
-    callback clicked;
-
-    height: 36px;
-    min-width: 100px;
-    border-radius: Theme.radius-sm;
-    border-width: 1px;
-    border-color: Theme.border-strong;
-    background: Theme.bg-panel;
-
-    Text {
-        width: 100%; height: 100%;
-        text: label;
-        font-size: 11px;
-        font-weight: 600;
-        color: Theme.text-secondary;
-        font-family: Theme.font-mono;
-        horizontal-alignment: center;
-        vertical-alignment: center;
-    }
-
-    TouchArea {
-        clicked => { root.clicked(); }
-        mouse-cursor: pointer;
-        states [
-            hover when self.has-hover: {
-                root.border-color: Theme.border-accent;
-                root.background: Theme.bg-hover;
-            }
-        ]
-    }
-}
-
-component ActionButton inherits Rectangle {
-    in property <string> label: "";
-    in property <bool> enabled: true;
-    in property <bool> emphasis: false;
-    callback clicked;
-
-    height: 36px;
-    min-width: 110px;
-    border-radius: Theme.radius-sm;
-    border-width: 1px;
-    border-color: emphasis && enabled ? Theme.accent-dim : (enabled ? Theme.border-strong : Theme.border);
-    background: emphasis && enabled ? Theme.accent-muted : Theme.bg-panel;
-    opacity: enabled ? 1.0 : 0.45;
-
-    Text {
-        width: 100%; height: 100%;
-        text: label;
-        font-size: 11px;
-        font-weight: 600;
-        color: emphasis && enabled ? Theme.accent : (enabled ? Theme.text-secondary : Theme.text-faint);
-        font-family: Theme.font-mono;
-        letter-spacing: 1px;
-        horizontal-alignment: center;
-        vertical-alignment: center;
-    }
-
-    TouchArea {
-        enabled: root.enabled;
-        clicked => { root.clicked(); }
-        mouse-cursor: enabled ? pointer : default;
-        states [
-            hover when self.has-hover && root.enabled: {
-                root.border-color: Theme.border-accent;
-                root.background: Theme.bg-hover;
-            }
-        ]
-    }
-}
-
-component HomeButton inherits Rectangle {
-    callback clicked;
-
-    width: 96px;
-    height: 30px;
-    border-radius: Theme.radius-sm;
-    border-width: 1px;
-    border-color: Theme.border;
-    background: Theme.bg-panel;
-
-    Text {
-        width: 100%; height: 100%;
-        text: "ESC  HOME";
-        font-size: 10px;
-        font-weight: 600;
-        color: Theme.text-muted;
-        font-family: Theme.font-mono;
-        letter-spacing: 1px;
-        horizontal-alignment: center;
-        vertical-alignment: center;
-    }
-
-    TouchArea {
-        clicked => { root.clicked(); }
-        mouse-cursor: pointer;
-    }
-}
