@@ -10,12 +10,14 @@ import { NavSurface } from "nav.slint";
 import { RadioSurface } from "radio.slint";
 import { MeshSurface } from "mesh.slint";
 import { TerminalSurface } from "terminal.slint";
-import { WaypointRow, MeshLine, MeshNode, LinkRow } from "models.slint";
+import { WaypointRow, MeshLine, MeshNode, LinkRow, ScanHit, BandChoice, BandNote } from "models.slint";
 
 export component AppWindow inherits Window {
     title: "RVN";
-    width: 1280px;
-    height: 800px;
+    preferred-width: 800px;
+    preferred-height: 480px;
+    min-width: 640px;
+    min-height: 400px;
     background: Theme.bg-void;
     default-font-family: Theme.font-sans;
 
@@ -27,7 +29,6 @@ export component AppWindow inherits Window {
     in-out property <string> gps-status: "NO FIX";
     in-out property <string> mesh-status: "OFFLINE";
     in-out property <string> power-str: "—";
-    in-out property <string> device-notice: "";
     in-out property <[LinkRow]> links;
 
     // Card status
@@ -81,6 +82,9 @@ export component AppWindow inherits Window {
     in-out property <int> nav-track-count: 0;
     in-out property <string> nav-notice: "";
     in-out property <[WaypointRow]> nav-waypoints;
+    in-out property <image> nav-map;
+    in-out property <string> nav-map-caption: "Waiting for a sky fix";
+    in-out property <bool> nav-map-follow: true;
 
     // RADIO
     in-out property <string> radio-readiness: "offline";
@@ -90,6 +94,14 @@ export component AppWindow inherits Window {
     in-out property <bool> radio-streaming: false;
     in-out property <bool> radio-simulated: false;
     in-out property <[float]> radio-spectrum;
+    in-out property <float> radio-mhz: 433;
+    in-out property <bool> radio-dragging: false;
+    in-out property <bool> radio-scanning: false;
+    in-out property <float> radio-scan-progress: 0;
+    in-out property <string> radio-scan-label: "";
+    in-out property <[ScanHit]> radio-hits;
+    in-out property <[BandChoice]> radio-bands;
+    in-out property <[BandNote]> radio-notes;
 
     // MESH
     in-out property <string> mesh-readiness: "offline";
@@ -110,24 +122,51 @@ export component AppWindow inherits Window {
 
     callback surface-selected(int);
     callback go-home();
-    callback radio-tune-up();
-    callback radio-tune-down();
+    callback radio-tune(float);
     callback radio-toggle-stream();
+    callback radio-scan(string);
+    callback radio-scan-stop();
     callback mesh-toggle-tx();
     callback mesh-send();
     callback nav-mark();
     callback nav-toggle-track();
     callback nav-copy();
+    callback nav-map-pan(float, float);
+    callback nav-map-zoom(int);
+    callback nav-map-recenter();
+    callback nav-map-resized(float, float);
     callback term-submit(string);
     callback term-clear();
 
-    FocusScope {
+    changed active-surface => {
+        if (active-surface == -1) {
+            shell.focus();
+        }
+    }
+
+    shell := FocusScope {
         width: 100%;
         height: 100%;
+        focus-on-click: false;
+
+        init => { shell.focus(); }
+
         key-pressed(event) => {
-            if (event.text == Key.Escape || event.text == "0") {
+            if (event.text == Key.Escape) {
+                if (active-surface != -1) {
+                    active-surface = -1;
+                    go-home();
+                }
+                shell.focus();
+                return accept;
+            }
+            if (active-surface == 3) {
+                return reject;
+            }
+            if (event.text == "0" && active-surface != -1) {
                 active-surface = -1;
                 go-home();
+                shell.focus();
                 return accept;
             }
             if (event.text == "1") { active-surface = 0; surface-selected(0); return accept; }
@@ -149,35 +188,14 @@ export component AppWindow inherits Window {
             power-str: power-str;
         }
 
-        if device-notice != "": Rectangle {
-            height: 40px;
-            background: Theme.accent-muted;
-
-            HorizontalLayout {
-                padding-left: 20px;
-                padding-right: 20px;
-                alignment: center;
-
-                Text {
-                    text: device-notice;
-                    font-size: 14px;
-                    font-weight: 600;
-                    color: Theme.accent-dim;
-                    font-family: Theme.font-sans;
-                    overflow: elide;
-                    horizontal-stretch: 1;
-                }
-            }
-        }
-
         Rectangle {
             background: Theme.bg-void;
             vertical-stretch: 1;
 
             if active-surface == -1: Rectangle {
                 VerticalLayout {
-                    padding: Theme.space-24;
-                    spacing: Theme.space-20;
+                    padding: Theme.space-12;
+                    spacing: Theme.space-12;
 
                     HorizontalLayout {
                         spacing: Theme.space-12;
@@ -199,19 +217,9 @@ export component AppWindow inherits Window {
                         }
                     }
 
-                    if links.length > 0: VerticalLayout {
-                        spacing: 4px;
-                        for link in links: Text {
-                            text: link.text;
-                            font-size: 13px;
-                            color: Theme.text-secondary;
-                            font-family: Theme.font-sans;
-                            wrap: word-wrap;
-                        }
-                    }
-
                     GridLayout {
                         spacing: Theme.space-12;
+                        horizontal-stretch: 1;
                         vertical-stretch: 1;
 
                         SurfaceTile {
@@ -257,14 +265,18 @@ export component AppWindow inherits Window {
                         Rectangle {
                             row: 1;
                             col: 2;
+                            horizontal-stretch: 1;
+                            vertical-stretch: 1;
+                            min-width: 0px;
+                            min-height: 0px;
                             border-radius: Theme.radius-lg;
                             border-width: 1px;
                             border-color: Theme.border;
                             background: Theme.bg-base;
 
                             VerticalLayout {
-                                padding: 26px;
-                                spacing: 12px;
+                                padding: 16px;
+                                spacing: 10px;
 
                                 Text {
                                     text: op-name;
@@ -297,6 +309,13 @@ export component AppWindow inherits Window {
             }
 
             if active-surface == 0: NavSurface {
+                map-image: nav-map;
+                map-caption: nav-map-caption;
+                map-following: nav-map-follow;
+                map-pan(dx, dy) => { nav-map-pan(dx, dy); }
+                map-zoom(step) => { nav-map-zoom(step); }
+                map-recenter => { nav-map-recenter(); }
+                map-resized(w, h) => { nav-map-resized(w, h); }
                 device: nav-device;
                 readiness: nav-readiness;
                 fix: nav-fix;
@@ -327,10 +346,19 @@ export component AppWindow inherits Window {
                 streaming: radio-streaming;
                 simulated: radio-simulated;
                 spectrum: radio-spectrum;
+                mhz <=> radio-mhz;
+                dragging <=> radio-dragging;
+                scanning: radio-scanning;
+                scan-progress: radio-scan-progress;
+                scan-label: radio-scan-label;
+                hits: radio-hits;
+                bands: radio-bands;
+                notes: radio-notes;
                 close => { active-surface = -1; go-home(); }
-                tune-up => { radio-tune-up(); }
-                tune-down => { radio-tune-down(); }
+                tune(mhz) => { radio-tune(mhz); }
                 toggle-stream => { radio-toggle-stream(); }
+                scan(id) => { radio-scan(id); }
+                scan-stop => { radio-scan-stop(); }
             }
 
             if active-surface == 2: MeshSurface {
@@ -348,7 +376,8 @@ export component AppWindow inherits Window {
                 send-message => { mesh-send(); }
             }
 
-            if active-surface == 3: TerminalSurface {
+            if active-surface == 3: term := TerminalSurface {
+                init => { term.focus-prompt(); }
                 output <=> term-output;
                 input <=> term-input;
                 cwd: term-cwd;

@@ -4,6 +4,7 @@
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
+use crate::core::bands::{mock_power, power_peaks, scan_plan};
 use crate::core::hardware::*;
 use crate::surfaces::spectrum_bins;
 
@@ -18,12 +19,26 @@ const LINES: [&str; 4] = [
     "grid check ok",
 ];
 
+enum ScanPhase {
+    Idle,
+    Running {
+        started: Instant,
+        label: String,
+        points: Vec<f32>,
+    },
+    Done {
+        label: String,
+        hits: Vec<ScanHit>,
+    },
+}
+
 pub struct MockAdapter {
     start: Instant,
     radio_freq_mhz: Mutex<f32>,
     radio_streaming: Mutex<bool>,
     inbox_step: Mutex<u32>,
     last_rx: Mutex<Option<Instant>>,
+    scan: Mutex<ScanPhase>,
 }
 
 impl MockAdapter {
@@ -34,11 +49,84 @@ impl MockAdapter {
             radio_streaming: Mutex::new(false),
             inbox_step: Mutex::new(0),
             last_rx: Mutex::new(None),
+            scan: Mutex::new(ScanPhase::Idle),
         }
     }
 
     pub fn elapsed_secs(&self) -> f32 {
         self.start.elapsed().as_secs_f32()
+    }
+}
+
+struct ScanOverlay {
+    scanning: bool,
+    progress: f32,
+    label: String,
+    hits: Vec<ScanHit>,
+}
+
+fn sweep_shown(elapsed: Duration, len: usize) -> usize {
+    if len == 0 {
+        return 0;
+    }
+    ((elapsed.as_secs_f32()) * 45.0).floor() as usize
+}
+
+fn hits_for(points: &[f32]) -> Vec<ScanHit> {
+    let samples: Vec<(f32, f32)> = points.iter().map(|mhz| (*mhz, mock_power(*mhz))).collect();
+    power_peaks(&samples)
+}
+
+impl MockAdapter {
+    fn scan_overlay(&self) -> ScanOverlay {
+        let mut phase = self.scan.lock().unwrap();
+        let running = match &*phase {
+            ScanPhase::Running { started, label, points } => {
+                Some((started.elapsed(), label.clone(), points.clone()))
+            }
+            _ => None,
+        };
+        if let Some((elapsed, label, points)) = running {
+            let shown = sweep_shown(elapsed, points.len()).min(points.len());
+            let hits = hits_for(&points[..shown]);
+            let progress = if points.is_empty() {
+                1.0
+            } else {
+                shown as f32 / points.len() as f32
+            };
+            if !points.is_empty() && shown >= points.len() {
+                *phase = ScanPhase::Done {
+                    label: label.clone(),
+                    hits: hits.clone(),
+                };
+                return ScanOverlay {
+                    scanning: false,
+                    progress: 1.0,
+                    label,
+                    hits,
+                };
+            }
+            return ScanOverlay {
+                scanning: true,
+                progress,
+                label: format!("{label} · {:.0}%", progress * 100.0),
+                hits,
+            };
+        }
+        match &*phase {
+            ScanPhase::Done { label, hits } => ScanOverlay {
+                scanning: false,
+                progress: 1.0,
+                label: label.clone(),
+                hits: hits.clone(),
+            },
+            _ => ScanOverlay {
+                scanning: false,
+                progress: 0.0,
+                label: String::new(),
+                hits: Vec::new(),
+            },
+        }
     }
 }
 
@@ -140,6 +228,7 @@ impl Platform for MockAdapter {
             };
         }
 
+        let scan = self.scan_overlay();
         if elapsed > Duration::from_secs(7) {
             status.radio = RadioStatus {
                 readiness: if streaming {
@@ -151,7 +240,11 @@ impl Platform for MockAdapter {
                 center_freq_mhz: freq,
                 sample_rate: 2_048_000,
                 simulated: true,
-                spectrum: spectrum_bins(elapsed.as_secs_f32(), streaming, true, freq),
+                spectrum: spectrum_bins(elapsed.as_secs_f32(), streaming && !scan.scanning, true, freq),
+                scanning: scan.scanning,
+                scan_progress: scan.progress,
+                scan_label: scan.label,
+                scan_hits: scan.hits,
             };
         }
 
@@ -176,6 +269,27 @@ impl Platform for MockAdapter {
 
     fn set_radio_streaming(&self, on: bool) {
         *self.radio_streaming.lock().unwrap() = on;
+    }
+
+    fn start_radio_scan(&self, band_id: &str, center_mhz: f32) {
+        let plan = scan_plan(band_id, center_mhz);
+        *self.scan.lock().unwrap() = ScanPhase::Running {
+            started: Instant::now(),
+            label: plan.label,
+            points: plan.points,
+        };
+    }
+
+    fn cancel_radio_scan(&self) {
+        let mut phase = self.scan.lock().unwrap();
+        if let ScanPhase::Running { label, points, started } = &*phase {
+            let shown = sweep_shown(started.elapsed(), points.len());
+            let hits = hits_for(&points[..shown]);
+            *phase = ScanPhase::Done {
+                label: label.clone(),
+                hits,
+            };
+        }
     }
 
     fn take_mesh_inbox(&self) -> Vec<MeshInbound> {

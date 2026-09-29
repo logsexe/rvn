@@ -1,3 +1,4 @@
+pub mod bands;
 pub mod events;
 pub mod geo;
 pub mod hardware;

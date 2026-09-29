@@ -137,12 +137,21 @@ export component TerminalSurface inherits Rectangle {
                     color: Theme.text-primary;
                     single-line: true;
                     horizontal-stretch: 1;
+                    vertical-stretch: 1;
                     enabled: !busy;
 
                     accepted => {
                         if (root.input != "") {
                             root.submit(root.input);
                         }
+                    }
+
+                    key-pressed(event) => {
+                        if (event.text == Key.Escape) {
+                            root.close();
+                            return accept;
+                        }
+                        return reject;
                     }
                 }
 
@@ -182,7 +191,15 @@ export component TerminalSurface inherits Rectangle {
         }
     }
 
-    // Focus input when surface opens
+    // The shell's key handler keeps focus until this field takes it.
     forward-focus: input-field;
+
+    public function focus-prompt() {
+        input-field.focus();
+    }
+
+    init => {
+        input-field.focus();
+    }
 }
 

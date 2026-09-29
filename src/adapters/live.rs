@@ -59,6 +59,15 @@ impl Platform for LivePlatform {
         self.radio.set_streaming(on);
     }
 
+    fn start_radio_scan(&self, band_id: &str, center_mhz: f32) {
+        let plan = crate::core::bands::scan_plan(band_id, center_mhz);
+        self.radio.start_sweep(plan.points, plan.label);
+    }
+
+    fn cancel_radio_scan(&self) {
+        self.radio.cancel_sweep();
+    }
+
     fn take_mesh_inbox(&self) -> Vec<MeshInbound> {
         self.mesh.take_inbox()
     }

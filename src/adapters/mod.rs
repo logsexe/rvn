@@ -29,6 +29,8 @@ pub trait Platform: Send + Sync {
     fn poll(&self) -> PlatformStatus;
     fn set_radio_freq(&self, mhz: f32);
     fn set_radio_streaming(&self, on: bool);
+    fn start_radio_scan(&self, band_id: &str, center_mhz: f32);
+    fn cancel_radio_scan(&self);
     fn take_mesh_inbox(&self) -> Vec<MeshInbound>;
     fn send_mesh_text(&self, text: &str) -> bool;
 }

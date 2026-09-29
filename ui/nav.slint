@@ -2,7 +2,7 @@ import { Theme } from "theme.slint";
 import { StatusDot } from "components.slint";
 import { WaypointRow } from "models.slint";
 
-// NAV — position, fix quality, and field orientation
+// NAV — a map you can move around, with the fix beside it
 
 component FixBadge inherits Rectangle {
     in property <string> fix: "NO FIX";
@@ -37,34 +37,6 @@ component FixBadge inherits Rectangle {
     }
 }
 
-component CoordinateRow inherits HorizontalLayout {
-    in property <string> axis: "";
-    in property <string> value: "";
-    in property <bool> large: false;
-
-    spacing: Theme.space-16;
-    alignment: center;
-
-    Text {
-        text: axis;
-        font-size: large ? 14px : 12px;
-        font-weight: 700;
-        color: Theme.text-faint;
-        font-family: Theme.font-mono;
-        letter-spacing: 1px;
-        min-width: 40px;
-    }
-
-    Text {
-        text: value;
-        font-size: large ? 28px : 16px;
-        font-weight: 600;
-        color: Theme.text-primary;
-        font-family: Theme.font-mono;
-        horizontal-stretch: 1;
-    }
-}
-
 component MiniMetric inherits Rectangle {
     in property <string> label: "";
     in property <string> value: "";
@@ -73,11 +45,12 @@ component MiniMetric inherits Rectangle {
     border-width: 1px;
     border-color: Theme.border;
     background: Theme.bg-panel;
-    min-height: 64px;
+    horizontal-stretch: 1;
+    min-height: 48px;
 
     VerticalLayout {
-        padding: Theme.space-12;
-        spacing: 4px;
+        padding: 8px;
+        spacing: 2px;
         alignment: center;
 
         Text {
@@ -90,10 +63,11 @@ component MiniMetric inherits Rectangle {
         }
         Text {
             text: value;
-            font-size: 16px;
+            font-size: 14px;
             font-weight: 600;
             color: Theme.text-primary;
             font-family: Theme.font-mono;
+            overflow: elide;
         }
     }
 }
@@ -139,27 +113,19 @@ component WaypointLine inherits Rectangle {
     }
 }
 
-component SectionLabel inherits Text {
-    font-size: 10px;
-    font-weight: 700;
-    color: Theme.text-faint;
-    font-family: Theme.font-mono;
-    letter-spacing: 1px;
-}
-
 component Metric inherits HorizontalLayout {
     in property <string> label: "";
     in property <string> value: "";
 
     spacing: Theme.space-8;
-    height: 22px;
+    height: 20px;
 
     Text {
         text: label;
         font-size: 11px;
         color: Theme.text-faint;
         font-family: Theme.font-mono;
-        min-width: 72px;
+        min-width: 52px;
         vertical-alignment: center;
     }
     Text {
@@ -177,13 +143,15 @@ component Metric inherits HorizontalLayout {
 component ActionButton inherits Rectangle {
     in property <string> label: "";
     in property <bool> enabled: true;
+    in property <bool> emphasis: false;
     callback clicked;
 
-    height: 36px;
+    height: 32px;
+    horizontal-stretch: 1;
     border-radius: Theme.radius-sm;
     border-width: 1px;
-    border-color: enabled ? Theme.border-strong : Theme.border;
-    background: Theme.bg-panel;
+    border-color: emphasis && enabled ? Theme.accent-dim : (enabled ? Theme.border-strong : Theme.border);
+    background: emphasis && enabled ? Theme.accent-muted : Theme.bg-panel;
     opacity: enabled ? 1.0 : 0.45;
 
     Text {
@@ -191,9 +159,9 @@ component ActionButton inherits Rectangle {
         text: label;
         font-size: 11px;
         font-weight: 600;
-        color: enabled ? Theme.text-secondary : Theme.text-faint;
+        color: emphasis && enabled ? Theme.accent : (enabled ? Theme.text-secondary : Theme.text-faint);
         font-family: Theme.font-mono;
-        letter-spacing: 1px;
+        letter-spacing: 0.6px;
         horizontal-alignment: center;
         vertical-alignment: center;
     }
@@ -209,6 +177,36 @@ component ActionButton inherits Rectangle {
         enabled: root.enabled;
         clicked => { root.clicked(); }
         mouse-cursor: enabled ? pointer : default;
+    }
+}
+
+component MapButton inherits Rectangle {
+    in property <string> label: "";
+    in property <bool> on: false;
+    callback clicked;
+
+    width: 36px;
+    height: 36px;
+    border-radius: Theme.radius-sm;
+    border-width: 1px;
+    border-color: on ? Theme.accent-dim : Theme.border-strong;
+    background: on ? Theme.accent-muted : Theme.bg-panel;
+
+    Text {
+        width: 100%;
+        height: 100%;
+        text: label;
+        font-size: 14px;
+        font-weight: 700;
+        color: on ? Theme.accent : Theme.text-primary;
+        font-family: Theme.font-mono;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+
+    TouchArea {
+        clicked => { root.clicked(); }
+        mouse-cursor: pointer;
     }
 }
 
@@ -238,9 +236,9 @@ component HomeButton inherits Rectangle {
         mouse-cursor: pointer;
     }
 }
+
 export component NavSurface inherits Rectangle {
     in property <string> device: "";
-    // Fix
     in property <string> readiness: "offline";
     in property <string> fix: "NO FIX";
     in property <int> sats: 0;
@@ -249,8 +247,6 @@ export component NavSurface inherits Rectangle {
     in property <string> alt: "—";
     in property <string> speed: "—";
     in property <string> heading: "—";
-
-    // Derived / display helpers
     in property <string> grid-ref: "—";
     in property <string> accuracy: "—";
     in property <string> last-update: "—";
@@ -258,19 +254,29 @@ export component NavSurface inherits Rectangle {
     in property <int> track-count: 0;
     in property <string> notice: "";
     in property <[WaypointRow]> waypoints;
+    in property <image> map-image;
+    in property <string> map-caption: "";
+    in property <bool> map-following: true;
 
     callback close;
     callback mark-waypoint;
     callback toggle-track;
     callback copy-coords;
+    callback map-pan(float, float);
+    callback map-zoom(int);
+    callback map-recenter();
+    callback map-resized(float, float);
+
+    property <bool> drag-on: false;
+    property <length> drag-x: 0px;
+    property <length> drag-y: 0px;
 
     background: Theme.bg-void;
 
     VerticalLayout {
-        padding: Theme.space-20;
-        spacing: Theme.space-16;
+        padding: Theme.space-12;
+        spacing: Theme.space-12;
 
-        // Header
         HorizontalLayout {
             spacing: Theme.space-12;
             alignment: center;
@@ -284,7 +290,7 @@ export component NavSurface inherits Rectangle {
             }
 
             Text {
-                text: "// POSITION";
+                text: "// MAP";
                 font-size: 12px;
                 color: Theme.text-faint;
                 font-family: Theme.font-mono;
@@ -293,7 +299,6 @@ export component NavSurface inherits Rectangle {
 
             Rectangle { horizontal-stretch: 1; }
 
-            // Live fix badge
             FixBadge {
                 fix: fix;
                 readiness: readiness;
@@ -302,74 +307,111 @@ export component NavSurface inherits Rectangle {
             HomeButton { clicked => { root.close(); } }
         }
 
-        // Main body
         HorizontalLayout {
-            spacing: Theme.space-16;
+            spacing: Theme.space-12;
             vertical-stretch: 1;
 
-            // LEFT — primary position readout
-            VerticalLayout {
-                spacing: Theme.space-12;
-                horizontal-stretch: 2;
+            map-frame := Rectangle {
+                horizontal-stretch: 1;
+                vertical-stretch: 1;
+                min-width: 0px;
+                border-radius: Theme.radius-md;
+                border-width: 1px;
+                border-color: Theme.border;
+                background: #0c1218;
+                clip: true;
 
-                SectionLabel { text: "COORDINATES"; }
+                changed width => { root.map-resized(self.width / 1px, self.height / 1px); }
+                changed height => { root.map-resized(self.width / 1px, self.height / 1px); }
 
-                // Large coordinate block
+                Image {
+                    width: 100%;
+                    height: 100%;
+                    source: root.map-image;
+                    image-fit: fill;
+                }
+
+                TouchArea {
+                    width: 100%;
+                    height: 100%;
+
+                    moved => {
+                        if (self.pressed) {
+                            if (!root.drag-on) {
+                                root.drag-on = true;
+                                root.drag-x = self.pressed-x;
+                                root.drag-y = self.pressed-y;
+                            }
+                            root.map-pan((self.mouse-x - root.drag-x) / 1px, (self.mouse-y - root.drag-y) / 1px);
+                            root.drag-x = self.mouse-x;
+                            root.drag-y = self.mouse-y;
+                        } else {
+                            root.drag-on = false;
+                        }
+                    }
+                    scroll-event(event) => {
+                        if (event.delta-y < 0) {
+                            root.map-zoom(1);
+                        } else if (event.delta-y > 0) {
+                            root.map-zoom(-1);
+                        }
+                        return accept;
+                    }
+                    double-clicked => { root.map-zoom(1); }
+                }
+
                 Rectangle {
-                    border-radius: Theme.radius-md;
-                    border-width: 1px;
-                    border-color: Theme.border;
-                    background: Theme.bg-panel;
-                    min-height: 160px;
+                    x: 10px;
+                    y: parent.height - 36px;
+                    width: parent.width - 20px;
+                    height: 26px;
+                    border-radius: Theme.radius-sm;
+                    background: #080a0ecc;
 
-                    VerticalLayout {
-                        padding: Theme.space-20;
-                        spacing: Theme.space-16;
+                    HorizontalLayout {
+                        padding-left: 8px;
+                        padding-right: 8px;
                         alignment: center;
 
-                        CoordinateRow {
-                            axis: "LAT";
-                            value: lat;
-                            large: true;
-                        }
-                        CoordinateRow {
-                            axis: "LON";
-                            value: lon;
-                            large: true;
-                        }
-
-                        if device != "": Text {
-                            text: device;
-                            font-size: 13px;
-                            color: Theme.accent-dim;
+                        Text {
+                            text: map-caption;
+                            font-size: 11px;
+                            color: Theme.text-secondary;
                             font-family: Theme.font-sans;
-                            wrap: word-wrap;
+                            vertical-alignment: center;
                         }
                     }
                 }
 
-                // Secondary metrics row
-                HorizontalLayout {
-                    spacing: Theme.space-12;
+                VerticalLayout {
+                    x: parent.width - 48px;
+                    y: 12px;
+                    width: 36px;
+                    height: 120px;
+                    spacing: 6px;
 
-                    MiniMetric {
-                        label: "ALT";
-                        value: alt;
-                        horizontal-stretch: 1;
-                    }
-                    MiniMetric {
-                        label: "SPEED";
-                        value: speed;
-                        horizontal-stretch: 1;
-                    }
-                    MiniMetric {
-                        label: "HDG";
-                        value: heading;
-                        horizontal-stretch: 1;
+                    MapButton { label: "+"; clicked => { root.map-zoom(1); } }
+                    MapButton { label: "−"; clicked => { root.map-zoom(-1); } }
+                    MapButton {
+                        label: "⌖";
+                        on: map-following;
+                        clicked => { root.map-recenter(); }
                     }
                 }
+            }
 
-                SectionLabel { text: "QUALITY"; }
+            VerticalLayout {
+                spacing: 8px;
+                horizontal-stretch: 1;
+                min-width: 0px;
+
+                if device != "": Text {
+                    text: device;
+                    font-size: 12px;
+                    color: Theme.accent-dim;
+                    font-family: Theme.font-sans;
+                    wrap: word-wrap;
+                }
 
                 Rectangle {
                     border-radius: Theme.radius-md;
@@ -378,103 +420,79 @@ export component NavSurface inherits Rectangle {
                     background: Theme.bg-panel;
 
                     VerticalLayout {
-                        padding: Theme.space-16;
-                        spacing: Theme.space-8;
+                        padding: 10px;
+                        spacing: 4px;
+                        Metric { label: "LAT"; value: lat; }
+                        Metric { label: "LON"; value: lon; }
+                        Metric { label: "GRID"; value: grid-ref; }
+                    }
+                }
 
-                        Metric { label: "FIX"; value: fix; }
+                HorizontalLayout {
+                    spacing: 8px;
+                    MiniMetric { label: "ALT"; value: alt; }
+                    MiniMetric { label: "SPD"; value: speed; }
+                    MiniMetric { label: "HDG"; value: heading; }
+                }
+
+                Rectangle {
+                    border-radius: Theme.radius-md;
+                    border-width: 1px;
+                    border-color: Theme.border;
+                    background: Theme.bg-panel;
+
+                    VerticalLayout {
+                        padding: 10px;
+                        spacing: 2px;
                         Metric { label: "SATS"; value: "" + sats; }
                         Metric { label: "ACC"; value: accuracy; }
                         Metric { label: "AGE"; value: last-update; }
                     }
                 }
-            }
 
-            // RIGHT — status + actions
-            VerticalLayout {
-                spacing: Theme.space-12;
-                horizontal-stretch: 1;
-
-                SectionLabel { text: "MODULE"; }
-
-                Rectangle {
-                    border-radius: Theme.radius-md;
-                    border-width: 1px;
-                    border-color: Theme.border;
-                    background: Theme.bg-panel;
-
-                    VerticalLayout {
-                        padding: Theme.space-16;
-                        spacing: Theme.space-12;
-
-                        HorizontalLayout {
-                            alignment: center;
-                            Text {
-                                text: "GNSS";
-                                font-size: 11px;
-                                font-weight: 700;
-                                color: Theme.text-secondary;
-                                font-family: Theme.font-mono;
-                                letter-spacing: 1.5px;
-                            }
-                            Rectangle { horizontal-stretch: 1; }
-                            StatusDot { state: readiness; }
-                        }
-
-                        Metric { label: "STATE"; value: readiness == "ok" || readiness == "active" ? "ONLINE" : readiness == "warn" ? "DEGRADED" : "OFFLINE"; }
-                        Metric { label: "SATS IN VIEW"; value: "" + sats; }
-                        Metric { label: "GRID"; value: grid-ref; }
-                    }
-                }
-
-                SectionLabel { text: "ACTIONS"; }
-
-                VerticalLayout {
-                    spacing: Theme.space-8;
-
+                HorizontalLayout {
+                    spacing: 8px;
                     ActionButton {
-                        label: "MARK WAYPOINT";
+                        label: "MARK";
                         enabled: readiness == "ok" || readiness == "active";
                         clicked => { root.mark-waypoint(); }
                     }
                     ActionButton {
-                        label: tracking ? "STOP TRACK" : "START TRACK";
+                        label: tracking ? "STOP" : "TRACK";
                         enabled: tracking || readiness == "ok" || readiness == "active";
                         clicked => { root.toggle-track(); }
                     }
                     ActionButton {
-                        label: "COPY COORDS";
+                        label: "COPY";
                         enabled: lat != "—";
                         clicked => { root.copy-coords(); }
                     }
                 }
 
                 Text {
-                    text: notice != "" ? notice : (tracking ? "TRACKING · " + track-count + " PTS" : "Mark a fix to drop a waypoint.");
+                    text: notice != "" ? notice : (tracking ? "TRACKING · " + track-count + " PTS" : "Drag the map. Scroll or + / − to zoom.");
                     font-size: 11px;
                     color: notice != "" || tracking ? Theme.accent : Theme.text-faint;
-                    font-family: Theme.font-mono;
+                    font-family: Theme.font-sans;
                     wrap: word-wrap;
                 }
 
-                SectionLabel { text: tracking ? "TRACK · " + track-count + " PTS" : "WAYPOINTS"; }
-
                 Rectangle {
                     vertical-stretch: 1;
+                    min-height: 40px;
                     border-radius: Theme.radius-md;
                     border-width: 1px;
                     border-color: Theme.border;
                     background: Theme.bg-panel;
-                    min-height: 80px;
 
                     if waypoints.length == 0: Text {
                         width: 100%;
                         height: 100%;
-                        text: "NONE MARKED";
+                        text: "NO WAYPOINTS";
                         font-size: 11px;
                         font-weight: 600;
                         color: Theme.text-faint;
                         font-family: Theme.font-mono;
-                        letter-spacing: 1px;
                         horizontal-alignment: center;
                         vertical-alignment: center;
                     }
@@ -486,9 +504,8 @@ export component NavSurface inherits Rectangle {
                         content-height: wp-list.preferred-height;
 
                         wp-list := VerticalLayout {
-                            padding: Theme.space-8;
+                            padding: 8px;
                             spacing: 2px;
-
                             for wp in waypoints: WaypointLine {
                                 name: wp.name;
                                 coords: wp.coords;
@@ -501,8 +518,3 @@ export component NavSurface inherits Rectangle {
         }
     }
 }
-
-// ----------------------------------------------------------
-// Building blocks
-// ----------------------------------------------------------
-

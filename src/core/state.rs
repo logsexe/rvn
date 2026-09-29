@@ -84,8 +84,6 @@ pub struct AppState {
     pub last_track_lon: Option<f64>,
     pub nav_notice: String,
     pub mesh_messages: Vec<MeshMessage>,
-    /// Latest USB assignment, shown until a newer device appears.
-    pub device_notice: String,
 }
 
 impl Default for AppState {
@@ -102,7 +100,6 @@ impl Default for AppState {
             last_track_lon: None,
             nav_notice: String::new(),
             mesh_messages: Vec::new(),
-            device_notice: String::new(),
         }
     }
 }

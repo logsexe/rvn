@@ -38,7 +38,7 @@ component StatCard inherits Rectangle {
     border-width: 1px;
     border-color: Theme.border;
     background: Theme.bg-panel;
-    min-height: 72px;
+    min-height: 52px;
 
     VerticalLayout {
         padding: Theme.space-12;
@@ -255,8 +255,8 @@ export component MeshSurface inherits Rectangle {
     background: Theme.bg-void;
 
     VerticalLayout {
-        padding: Theme.space-20;
-        spacing: Theme.space-16;
+        padding: Theme.space-12;
+        spacing: Theme.space-12;
 
         // Header
         HorizontalLayout {
@@ -293,7 +293,7 @@ export component MeshSurface inherits Rectangle {
             // LEFT — nodes + traffic
             VerticalLayout {
                 spacing: Theme.space-12;
-                horizontal-stretch: 2;
+                horizontal-stretch: 1;
 
                 SectionLabel { text: "NETWORK"; }
 
@@ -326,7 +326,7 @@ export component MeshSurface inherits Rectangle {
                     border-color: Theme.border;
                     background: Theme.bg-panel;
                     vertical-stretch: 1;
-                    min-height: 120px;
+                    min-height: 48px;
 
                     if nodes.length == 0: VerticalLayout {
                         padding: Theme.space-16;
@@ -379,7 +379,7 @@ export component MeshSurface inherits Rectangle {
                     border-color: Theme.border;
                     background: Theme.bg-panel;
                     vertical-stretch: 1;
-                    min-height: 100px;
+                    min-height: 48px;
 
                     if messages.length == 0: Text {
                         width: 100%;

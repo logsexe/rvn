@@ -12,8 +12,10 @@ use tracing::info;
 use tracing_subscriber::EnvFilter;
 
 use adapters::{boot, Platform};
+use core::bands::{au_notes, band_choices};
 use core::hardware::{PowerSource, Readiness};
 use core::{AppState, Surface};
+use surfaces::mapview::{MapImage, MapView};
 use surfaces::run_line;
 
 slint::include_modules!();
@@ -44,6 +46,8 @@ fn main() -> Result<()> {
 
     let ui = AppWindow::new()?;
     let platform = boot();
+    let map = Arc::new(Mutex::new(MapView::new()));
+    let map_viewport = Arc::new(Mutex::new((640.0_f32, 360.0_f32)));
     let controls = Arc::new(Mutex::new(LiveControls::default()));
     platform.set_radio_freq(433.0);
     platform.set_radio_streaming(false);
@@ -65,6 +69,7 @@ fn main() -> Result<()> {
         let platform = platform.clone();
         let state = state.clone();
         let controls = controls.clone();
+        let map = map.clone();
         let mut seen_links: Vec<String> = Vec::new();
         ui_timer.start(TimerMode::Repeated, Duration::from_millis(500), move || {
             let Some(ui) = ui_weak.upgrade() else {
@@ -83,7 +88,6 @@ fn main() -> Result<()> {
                     .map(|row| row.text.clone())
                     .collect();
                 if let Some(fresh) = lines.iter().find(|line| !seen_links.contains(*line)) {
-                    st.device_notice = fresh.clone();
                     info!("{fresh}");
                 }
                 seen_links.clone_from(&lines);
@@ -95,8 +99,33 @@ fn main() -> Result<()> {
                 }
                 st.clone()
             };
+            if let (Some(lat), Some(lon)) = (snap.platform.gps.latitude, snap.platform.gps.longitude)
+            {
+                map.lock().unwrap().note_fix(lat, lon);
+            }
             let ctrl = controls.lock().unwrap().clone();
             push_ui(&ui, &snap, &ctrl);
+        });
+    }
+
+    let map_timer = Timer::default();
+    {
+        let ui_weak = ui.as_weak();
+        let map = map.clone();
+        let map_viewport = map_viewport.clone();
+        map_timer.start(TimerMode::Repeated, Duration::from_millis(80), move || {
+            let Some(ui) = ui_weak.upgrade() else {
+                return;
+            };
+            let skip = {
+                let mut view = map.lock().unwrap();
+                view.tick();
+                ui.get_active_surface() != 0 && !view.animating()
+            };
+            if skip {
+                return;
+            }
+            publish_map(&ui, &map, &map_viewport);
         });
     }
 
@@ -119,41 +148,76 @@ fn main() -> Result<()> {
     {
         let platform = platform.clone();
         let controls = controls.clone();
-        let state = state.clone();
         let ui_weak = ui.as_weak();
-        ui.on_radio_tune_up(move || {
-            let Some(ui) = ui_weak.upgrade() else {
-                return;
-            };
-            let ctrl = {
+        ui.on_radio_tune(move |mhz| {
+            let mhz = mhz.clamp(24.0, 1700.0);
+            {
                 let mut c = controls.lock().unwrap();
-                c.radio_freq_mhz += 0.1;
-                info!("RADIO tune → {:.3} MHz", c.radio_freq_mhz);
-                c.clone()
-            };
-            platform.set_radio_freq(ctrl.radio_freq_mhz);
-            let snap = state.lock().unwrap().clone();
-            push_ui(&ui, &snap, &ctrl);
+                c.radio_freq_mhz = mhz;
+            }
+            platform.set_radio_freq(mhz);
+            if let Some(ui) = ui_weak.upgrade() {
+                let label: slint::SharedString = format!("{mhz:.3} MHz").into();
+                ui.set_radio_freq(label.clone());
+                ui.set_sys_radio_freq(label);
+            }
         });
     }
     {
         let platform = platform.clone();
         let controls = controls.clone();
-        let state = state.clone();
+        ui.on_radio_scan(move |band| {
+            let center = controls.lock().unwrap().radio_freq_mhz;
+            info!("RADIO scan {band} around {center:.3} MHz");
+            platform.start_radio_scan(band.as_str(), center);
+        });
+    }
+    {
+        let platform = platform.clone();
+        ui.on_radio_scan_stop(move || {
+            info!("RADIO scan stop");
+            platform.cancel_radio_scan();
+        });
+    }
+    {
+        let map = map.clone();
+        let map_viewport = map_viewport.clone();
         let ui_weak = ui.as_weak();
-        ui.on_radio_tune_down(move || {
-            let Some(ui) = ui_weak.upgrade() else {
-                return;
-            };
-            let ctrl = {
-                let mut c = controls.lock().unwrap();
-                c.radio_freq_mhz = (c.radio_freq_mhz - 0.1).max(0.1);
-                info!("RADIO tune → {:.3} MHz", c.radio_freq_mhz);
-                c.clone()
-            };
-            platform.set_radio_freq(ctrl.radio_freq_mhz);
-            let snap = state.lock().unwrap().clone();
-            push_ui(&ui, &snap, &ctrl);
+        ui.on_nav_map_pan(move |dx, dy| {
+            map.lock().unwrap().pan(f64::from(dx), f64::from(dy));
+            if let Some(ui) = ui_weak.upgrade() {
+                publish_map(&ui, &map, &map_viewport);
+            }
+        });
+    }
+    {
+        let map = map.clone();
+        let map_viewport = map_viewport.clone();
+        let ui_weak = ui.as_weak();
+        ui.on_nav_map_zoom(move |step| {
+            map.lock().unwrap().zoom_steps(step);
+            if let Some(ui) = ui_weak.upgrade() {
+                publish_map(&ui, &map, &map_viewport);
+            }
+        });
+    }
+    {
+        let map = map.clone();
+        let map_viewport = map_viewport.clone();
+        let ui_weak = ui.as_weak();
+        ui.on_nav_map_recenter(move || {
+            map.lock().unwrap().recenter();
+            if let Some(ui) = ui_weak.upgrade() {
+                publish_map(&ui, &map, &map_viewport);
+            }
+        });
+    }
+    {
+        let map_viewport = map_viewport.clone();
+        ui.on_nav_map_resized(move |w, h| {
+            if w > 1.0 && h > 1.0 {
+                *map_viewport.lock().unwrap() = (w, h);
+            }
         });
     }
     {
@@ -340,8 +404,62 @@ fn main() -> Result<()> {
         });
     }
 
+    load_band_lists(&ui);
+    {
+        let mut view = map.lock().unwrap();
+        view.set_viewport(640.0, 360.0);
+        if let Some(frame) = view.render() {
+            ui.set_nav_map(map_image(&frame));
+        }
+        ui.set_nav_map_caption(view.caption().into());
+        ui.set_nav_map_follow(view.following());
+    }
+
     ui.run()?;
     Ok(())
+}
+
+fn load_band_lists(ui: &AppWindow) {
+    ui.set_radio_bands(ModelRc::new(VecModel::from(
+        band_choices()
+            .iter()
+            .map(|band| BandChoice {
+                id: band.id.into(),
+                label: band.label.into(),
+            })
+            .collect::<Vec<_>>(),
+    )));
+    ui.set_radio_notes(ModelRc::new(VecModel::from(
+        au_notes()
+            .iter()
+            .map(|note| BandNote {
+                range: note.range.into(),
+                name: note.name.into(),
+                purpose: note.purpose.into(),
+            })
+            .collect::<Vec<_>>(),
+    )));
+}
+
+fn publish_map(ui: &AppWindow, map: &Mutex<MapView>, viewport: &Mutex<(f32, f32)>) {
+    let (width, height) = *viewport.lock().unwrap();
+    let (frame, caption, follow) = {
+        let mut map = map.lock().unwrap();
+        map.set_viewport(width, height);
+        let frame = map.render();
+        (frame, map.caption(), map.following())
+    };
+    if let Some(frame) = frame {
+        ui.set_nav_map(map_image(&frame));
+    }
+    ui.set_nav_map_caption(caption.into());
+    ui.set_nav_map_follow(follow);
+}
+
+fn map_image(frame: &MapImage) -> slint::Image {
+    let mut buffer = slint::SharedPixelBuffer::<slint::Rgba8Pixel>::new(frame.width, frame.height);
+    buffer.make_mut_bytes().copy_from_slice(&frame.rgba);
+    slint::Image::from_rgba8(buffer)
 }
 
 fn device_line(port: &str, label: &str) -> String {
@@ -391,7 +509,6 @@ fn sync_ui(ui: &AppWindow, state: &AppState, ctrl: &LiveControls, spectrum: &[f3
     ui.set_gps_status(state.gps_display().into());
     ui.set_mesh_status(state.mesh_display().into());
     ui.set_power_str(state.power_display().into());
-    ui.set_device_notice(state.device_notice.clone().into());
     ui.set_links(ModelRc::new(VecModel::from(
         state
             .platform
@@ -451,13 +568,7 @@ fn sync_ui(ui: &AppWindow, state: &AppState, ctrl: &LiveControls, spectrum: &[f3
     );
     ui.set_sys_radio_readiness(radio_status.into());
     ui.set_sys_radio_device(p.radio.device.clone().into());
-    ui.set_sys_radio_freq(
-        if p.radio.readiness == Readiness::NotPresent {
-            "—".into()
-        } else {
-            format!("{:.3} MHz", ctrl.radio_freq_mhz).into()
-        },
-    );
+    ui.set_sys_radio_freq(format!("{:.3} MHz", ctrl.radio_freq_mhz).into());
     ui.set_sys_mesh_port(device_line(&p.mesh.port, &p.mesh.label).into());
     ui.set_sys_mesh_readiness(p.mesh.readiness.as_status_str().into());
     ui.set_sys_mesh_node(p.mesh.node_id.clone().into());
@@ -509,13 +620,10 @@ fn sync_ui(ui: &AppWindow, state: &AppState, ctrl: &LiveControls, spectrum: &[f3
 
     ui.set_radio_readiness(radio_status.into());
     ui.set_radio_device(p.radio.device.clone().into());
-    ui.set_radio_freq(
-        if p.radio.readiness == Readiness::NotPresent {
-            "—".into()
-        } else {
-            format!("{:.3} MHz", ctrl.radio_freq_mhz).into()
-        },
-    );
+    ui.set_radio_freq(format!("{:.3} MHz", ctrl.radio_freq_mhz).into());
+    if !ui.get_radio_dragging() {
+        ui.set_radio_mhz(ctrl.radio_freq_mhz);
+    }
     ui.set_radio_rate(
         if p.radio.readiness == Readiness::NotPresent {
             "—".into()
@@ -526,6 +634,19 @@ fn sync_ui(ui: &AppWindow, state: &AppState, ctrl: &LiveControls, spectrum: &[f3
     ui.set_radio_streaming(ctrl.radio_streaming);
     ui.set_radio_simulated(p.radio.simulated);
     ui.set_radio_spectrum(ModelRc::new(VecModel::from(spectrum.to_vec())));
+    ui.set_radio_scanning(p.radio.scanning);
+    ui.set_radio_scan_progress(p.radio.scan_progress);
+    ui.set_radio_scan_label(p.radio.scan_label.clone().into());
+    ui.set_radio_hits(ModelRc::new(VecModel::from(
+        p.radio
+            .scan_hits
+            .iter()
+            .map(|hit| ScanHit {
+                freq: format!("{:.3} MHz", hit.mhz).into(),
+                level: hit.power,
+            })
+            .collect::<Vec<_>>(),
+    )));
 
     ui.set_mesh_readiness(p.mesh.readiness.as_status_str().into());
     ui.set_mesh_node_id(p.mesh.node_id.clone().into());

@@ -1,5 +1,6 @@
 //! Surface-specific logic.
 
+pub mod mapview;
 pub mod radio;
 pub mod terminal;
 

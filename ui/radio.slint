@@ -1,5 +1,6 @@
 import { Theme } from "theme.slint";
 import { StatusDot } from "components.slint";
+import { BandChoice, BandNote, ScanHit } from "models.slint";
 
 // RADIO — receive-only SDR instrument
 
@@ -61,41 +62,6 @@ component Metric inherits HorizontalLayout {
         horizontal-stretch: 1;
         overflow: elide;
         vertical-alignment: center;
-    }
-}
-
-component TuneButton inherits Rectangle {
-    in property <string> label: "";
-    callback clicked;
-
-    height: 36px;
-    min-width: 100px;
-    border-radius: Theme.radius-sm;
-    border-width: 1px;
-    border-color: Theme.border-strong;
-    background: Theme.bg-panel;
-
-    Text {
-        width: 100%; height: 100%;
-        text: label;
-        font-size: 11px;
-        font-weight: 600;
-        color: Theme.text-secondary;
-        font-family: Theme.font-mono;
-        horizontal-alignment: center;
-        vertical-alignment: center;
-    }
-
-    states [
-        hover when ta.has-hover: {
-            border-color: Theme.border-accent;
-            background: Theme.bg-hover;
-        }
-    ]
-
-    ta := TouchArea {
-        clicked => { root.clicked(); }
-        mouse-cursor: pointer;
     }
 }
 
@@ -165,6 +131,163 @@ component HomeButton inherits Rectangle {
         mouse-cursor: pointer;
     }
 }
+
+component TabButton inherits Rectangle {
+    in property <string> label: "";
+    in property <bool> on: false;
+    callback clicked;
+
+    horizontal-stretch: 1;
+    height: 32px;
+    border-radius: Theme.radius-sm;
+    border-width: 1px;
+    border-color: on ? Theme.accent-dim : Theme.border;
+    background: on ? Theme.accent-muted : Theme.bg-panel;
+
+    Text {
+        width: 100%;
+        height: 100%;
+        text: label;
+        font-size: 11px;
+        font-weight: 600;
+        color: on ? Theme.accent : Theme.text-secondary;
+        font-family: Theme.font-sans;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+
+    TouchArea {
+        clicked => { root.clicked(); }
+        mouse-cursor: pointer;
+    }
+}
+
+component FreqSlider inherits Rectangle {
+    in property <float> value: 433;
+    in property <float> minimum: 24;
+    in property <float> maximum: 1700;
+    callback edited(float);
+    callback released();
+
+    height: 36px;
+    property <float> span: maximum - minimum;
+    property <float> t: clamp((value - minimum) / span, 0, 1);
+
+    Rectangle {
+        y: (parent.height - 4px) / 2;
+        height: 4px;
+        width: 100%;
+        border-radius: 2px;
+        background: Theme.border;
+    }
+
+    Rectangle {
+        y: (parent.height - 4px) / 2;
+        height: 4px;
+        width: root.t * parent.width;
+        border-radius: 2px;
+        background: Theme.accent;
+    }
+
+    Rectangle {
+        x: root.t * (parent.width - 18px);
+        y: (parent.height - 18px) / 2;
+        width: 18px;
+        height: 18px;
+        border-radius: 9px;
+        background: Theme.accent;
+        border-width: 2px;
+        border-color: Theme.bg-void;
+    }
+
+    TouchArea {
+        width: 100%;
+        height: 100%;
+
+        moved => {
+            if (self.pressed && root.width > 1px) {
+                root.edited(root.minimum + clamp(self.mouse-x / root.width, 0, 1) * root.span);
+            }
+        }
+        pointer-event(event) => {
+            if (event.kind == PointerEventKind.down && root.width > 1px) {
+                root.edited(root.minimum + clamp(self.mouse-x / root.width, 0, 1) * root.span);
+            }
+            if (event.kind == PointerEventKind.up) {
+                root.released();
+            }
+        }
+    }
+}
+
+component BandButton inherits Rectangle {
+    in property <string> label: "";
+    in property <bool> on: false;
+    callback clicked;
+
+    height: 32px;
+    border-radius: Theme.radius-sm;
+    border-width: 1px;
+    border-color: on ? Theme.accent-dim : Theme.border;
+    background: on ? Theme.accent-muted : Theme.bg-panel;
+
+    HorizontalLayout {
+        padding-left: 12px;
+        padding-right: 12px;
+        alignment: center;
+
+        Text {
+            text: label;
+            font-size: 12px;
+            font-weight: 600;
+            color: on ? Theme.accent : Theme.text-secondary;
+            font-family: Theme.font-sans;
+            vertical-alignment: center;
+        }
+    }
+
+    TouchArea {
+        clicked => { root.clicked(); }
+        mouse-cursor: pointer;
+    }
+}
+
+component HitRow inherits Rectangle {
+    in property <string> freq: "";
+    in property <float> level: 0;
+
+    height: 28px;
+
+    HorizontalLayout {
+        spacing: 10px;
+        alignment: center;
+
+        Text {
+            text: freq;
+            font-size: 13px;
+            font-weight: 600;
+            color: Theme.text-primary;
+            font-family: Theme.font-mono;
+            min-width: 108px;
+            vertical-alignment: center;
+        }
+
+        Rectangle {
+            horizontal-stretch: 1;
+            height: 6px;
+            border-radius: 3px;
+            background: Theme.border;
+
+            Rectangle {
+                width: root.level * parent.width;
+                height: 100%;
+                border-radius: 3px;
+                background: root.level > 0.72 ? Theme.warn : Theme.accent;
+            }
+        }
+    }
+}
+
 export component RadioSurface inherits Rectangle {
     in property <string> readiness: "offline";
     in property <string> device: "—";
@@ -174,19 +297,31 @@ export component RadioSurface inherits Rectangle {
     in property <bool> streaming: false;
     in property <bool> simulated: false;
     in property <[float]> spectrum;
+    in-out property <float> mhz: 433;
+    in-out property <bool> dragging: false;
+    in property <bool> scanning: false;
+    in property <float> scan-progress: 0;
+    in property <string> scan-label: "";
+    in property <[ScanHit]> hits;
+    in property <[BandChoice]> bands;
+    in property <[BandNote]> notes;
 
     callback close;
-    callback tune-up;
-    callback tune-down;
+    callback tune(float);
     callback toggle-stream;
+    callback scan(string);
+    callback scan-stop;
+
+    property <int> page: 0;
+    property <string> band-id: "survey";
+    property <bool> live-ok: readiness == "ok" || readiness == "active" || readiness == "warn";
 
     background: Theme.bg-void;
 
     VerticalLayout {
-        padding: Theme.space-20;
-        spacing: Theme.space-16;
+        padding: Theme.space-12;
+        spacing: Theme.space-12;
 
-        // Header
         HorizontalLayout {
             spacing: Theme.space-12;
             alignment: center;
@@ -215,32 +350,37 @@ export component RadioSurface inherits Rectangle {
         }
 
         HorizontalLayout {
-            spacing: Theme.space-16;
+            spacing: 8px;
+
+            TabButton { label: "LIVE"; on: page == 0; clicked => { root.page = 0; } }
+            TabButton { label: "SCAN"; on: page == 1; clicked => { root.page = 1; } }
+            TabButton { label: "INFO"; on: page == 2; clicked => { root.page = 2; } }
+        }
+
+        if page == 0: HorizontalLayout {
+            spacing: Theme.space-12;
             vertical-stretch: 1;
 
-            // LEFT — primary instrument
             VerticalLayout {
                 spacing: Theme.space-12;
-                horizontal-stretch: 2;
+                horizontal-stretch: 1;
 
                 SectionLabel { text: "FREQUENCY"; }
 
-                // Large frequency display
                 Rectangle {
                     border-radius: Theme.radius-md;
                     border-width: 1px;
                     border-color: Theme.border;
                     background: Theme.bg-panel;
-                    min-height: 120px;
 
                     VerticalLayout {
-                        padding: Theme.space-20;
-                        spacing: Theme.space-8;
+                        padding: Theme.space-16;
+                        spacing: 6px;
                         alignment: center;
 
                         Text {
                             text: freq;
-                            font-size: 36px;
+                            font-size: 32px;
                             font-weight: 700;
                             color: Theme.text-primary;
                             font-family: Theme.font-mono;
@@ -248,10 +388,10 @@ export component RadioSurface inherits Rectangle {
                         }
 
                         Text {
-                            text: streaming ? "STREAMING" : "IDLE";
+                            text: scanning ? scan-label : (streaming ? "STREAMING" : "IDLE");
                             font-size: 11px;
                             font-weight: 600;
-                            color: streaming ? Theme.accent : Theme.text-faint;
+                            color: scanning || streaming ? Theme.accent : Theme.text-faint;
                             font-family: Theme.font-mono;
                             letter-spacing: 1px;
                             horizontal-alignment: center;
@@ -259,23 +399,30 @@ export component RadioSurface inherits Rectangle {
                     }
                 }
 
-                // Tune controls
-                HorizontalLayout {
-                    spacing: Theme.space-8;
+                FreqSlider {
+                    value: mhz;
+                    edited(v) => {
+                        root.dragging = true;
+                        root.mhz = v;
+                        root.tune(v);
+                    }
+                    released => { root.dragging = false; }
+                }
 
-                    TuneButton {
-                        label: "− 100 kHz";
-                        clicked => { root.tune-down(); }
-                    }
-                    TuneButton {
-                        label: "+ 100 kHz";
-                        clicked => { root.tune-up(); }
-                    }
-                    Rectangle { horizontal-stretch: 1; }
+                Text {
+                    text: "Drag across 24–1700 MHz";
+                    font-size: 11px;
+                    color: Theme.text-faint;
+                    font-family: Theme.font-sans;
+                    horizontal-alignment: center;
+                }
+
+                HorizontalLayout {
+                    alignment: end;
                     ActionButton {
                         label: streaming ? "STOP RX" : "START RX";
                         emphasis: true;
-                        enabled: readiness == "ok" || readiness == "active" || readiness == "warn";
+                        enabled: live-ok && !scanning;
                         clicked => { root.toggle-stream(); }
                     }
                 }
@@ -283,7 +430,6 @@ export component RadioSurface inherits Rectangle {
                 HorizontalLayout {
                     alignment: center;
                     spacing: Theme.space-8;
-
                     SectionLabel { text: "SPECTRUM"; }
                     Rectangle { horizontal-stretch: 1; }
                     Text {
@@ -303,9 +449,9 @@ export component RadioSurface inherits Rectangle {
                     border-color: Theme.border;
                     background: Theme.bg-panel;
                     vertical-stretch: 1;
-                    min-height: 160px;
+                    min-height: 80px;
 
-                    if streaming && (readiness == "ok" || readiness == "active" || readiness == "warn"): HorizontalLayout {
+                    if streaming && live-ok && !scanning: HorizontalLayout {
                         width: 100%;
                         height: 100%;
                         padding-left: 12px;
@@ -329,14 +475,14 @@ export component RadioSurface inherits Rectangle {
                         }
                     }
 
-                    if !streaming || (readiness != "ok" && readiness != "active" && readiness != "warn"): VerticalLayout {
+                    if !streaming || !live-ok || scanning: VerticalLayout {
                         width: 100%;
                         height: 100%;
                         alignment: center;
                         spacing: Theme.space-8;
 
                         Text {
-                            text: readiness == "ok" || readiness == "active" || readiness == "warn" ? "WATERFALL IDLE" : "NO DEVICE";
+                            text: scanning ? "SWEEPING" : (live-ok ? "WATERFALL IDLE" : "NO DEVICE");
                             font-size: 12px;
                             font-weight: 600;
                             color: Theme.text-muted;
@@ -345,17 +491,17 @@ export component RadioSurface inherits Rectangle {
                             horizontal-alignment: center;
                         }
                         Text {
-                            text: readiness == "ok" || readiness == "active" || readiness == "warn" ? (simulated ? "Start RX to plot a simulated spectrum" : "Start RX to plot the spectrum") : "SDR will appear here when the dongle is attached";
+                            text: scanning ? scan-label : (live-ok ? (simulated ? "Start RX to plot a simulated spectrum" : "Start RX to plot the spectrum") : "SDR will appear here when the dongle is attached");
                             font-size: 11px;
                             color: Theme.text-faint;
                             font-family: Theme.font-sans;
                             horizontal-alignment: center;
+                            wrap: word-wrap;
                         }
                     }
                 }
             }
 
-            // RIGHT — module info
             VerticalLayout {
                 spacing: Theme.space-12;
                 horizontal-stretch: 1;
@@ -391,9 +537,10 @@ export component RadioSurface inherits Rectangle {
                         Metric { label: "MODE"; value: mode; }
                         Metric {
                             label: "STATE";
-                            value: streaming ? "ACTIVE" :
+                            value: scanning ? "SCANNING" : (
+                                   streaming ? "ACTIVE" :
                                    readiness == "ok" || readiness == "active" ? "READY" :
-                                   readiness == "warn" ? "DEGRADED" : "OFFLINE";
+                                   readiness == "warn" ? "DEGRADED" : "OFFLINE");
                         }
                     }
                 }
@@ -419,7 +566,7 @@ export component RadioSurface inherits Rectangle {
                             letter-spacing: 1px;
                         }
                         Text {
-                            text: "No transmit path. No injection. Spectrum observation only.";
+                            text: "No transmit path. The scan lists energy. It does not play audio.";
                             font-size: 11px;
                             color: Theme.text-muted;
                             font-family: Theme.font-sans;
@@ -431,7 +578,170 @@ export component RadioSurface inherits Rectangle {
                 Rectangle { vertical-stretch: 1; }
             }
         }
+
+        if page == 1: VerticalLayout {
+            spacing: Theme.space-12;
+            vertical-stretch: 1;
+
+            SectionLabel { text: "RANGE"; }
+
+            Flickable {
+                height: 40px;
+                width: 100%;
+                content-width: band-row.preferred-width;
+                content-height: 36px;
+
+                band-row := HorizontalLayout {
+                    spacing: 8px;
+                    for band in bands: BandButton {
+                        label: band.label;
+                        on: root.band-id == band.id;
+                        clicked => { root.band-id = band.id; }
+                    }
+                }
+            }
+
+            HorizontalLayout {
+                spacing: 8px;
+                alignment: center;
+
+                ActionButton {
+                    label: scanning ? "STOP" : "SCAN";
+                    emphasis: true;
+                    enabled: live-ok;
+                    clicked => {
+                        if (root.scanning) {
+                            root.scan-stop();
+                        } else {
+                            root.scan(root.band-id);
+                        }
+                    }
+                }
+
+                Text {
+                    text: scan-label == "" ? "Energy peaks in the selected range" : scan-label;
+                    font-size: 12px;
+                    color: Theme.text-secondary;
+                    font-family: Theme.font-sans;
+                    vertical-alignment: center;
+                    horizontal-stretch: 1;
+                    overflow: elide;
+                }
+            }
+
+            Rectangle {
+                height: 6px;
+                border-radius: 3px;
+                background: Theme.border;
+
+                Rectangle {
+                    width: root.scan-progress * parent.width;
+                    height: 100%;
+                    border-radius: 3px;
+                    background: Theme.accent;
+                }
+            }
+
+            Rectangle {
+                border-radius: Theme.radius-md;
+                border-width: 1px;
+                border-color: Theme.border;
+                background: Theme.bg-panel;
+                vertical-stretch: 1;
+
+                if hits.length == 0: Text {
+                    width: 100%;
+                    height: 100%;
+                    text: scanning ? "LISTENING…" : "NO PEAKS YET";
+                    font-size: 12px;
+                    font-weight: 600;
+                    color: Theme.text-faint;
+                    font-family: Theme.font-mono;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+
+                if hits.length > 0: Flickable {
+                    width: 100%;
+                    height: 100%;
+                    content-width: self.width;
+                    content-height: hit-list.preferred-height;
+
+                    hit-list := VerticalLayout {
+                        padding: Theme.space-12;
+                        spacing: 4px;
+                        for hit in hits: HitRow {
+                            freq: hit.freq;
+                            level: hit.level;
+                        }
+                    }
+                }
+            }
+        }
+
+        if page == 2: VerticalLayout {
+            spacing: Theme.space-12;
+            vertical-stretch: 1;
+
+            SectionLabel { text: "AUSTRALIA · PUBLIC ALLOCATIONS"; }
+
+            Text {
+                text: "What these ranges are used for. This receiver plots strength only.";
+                font-size: 12px;
+                color: Theme.text-muted;
+                font-family: Theme.font-sans;
+                wrap: word-wrap;
+            }
+
+            Rectangle {
+                border-radius: Theme.radius-md;
+                border-width: 1px;
+                border-color: Theme.border;
+                background: Theme.bg-panel;
+                vertical-stretch: 1;
+
+                Flickable {
+                    width: 100%;
+                    height: 100%;
+                    content-width: self.width;
+                    content-height: note-list.preferred-height;
+
+                    note-list := VerticalLayout {
+                        padding: Theme.space-12;
+                        spacing: 12px;
+
+                        for note in notes: VerticalLayout {
+                            spacing: 2px;
+
+                            HorizontalLayout {
+                                spacing: 8px;
+                                alignment: center;
+                                Text {
+                                    text: note.name;
+                                    font-size: 13px;
+                                    font-weight: 600;
+                                    color: Theme.text-primary;
+                                    font-family: Theme.font-sans;
+                                }
+                                Rectangle { horizontal-stretch: 1; }
+                                Text {
+                                    text: note.range;
+                                    font-size: 12px;
+                                    color: Theme.accent-dim;
+                                    font-family: Theme.font-mono;
+                                }
+                            }
+                            Text {
+                                text: note.purpose;
+                                font-size: 12px;
+                                color: Theme.text-secondary;
+                                font-family: Theme.font-sans;
+                                wrap: word-wrap;
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 }
-
-// Building blocks

@@ -9,6 +9,7 @@ use num_complex::Complex;
 use rtl_sdr_rs::{RtlSdr, TunerGain};
 use rustfft::{Fft, FftPlanner};
 
+use crate::core::bands::power_peaks;
 use crate::core::hardware::{RadioStatus, Readiness, SPECTRUM_BINS};
 
 const FFT_LEN: usize = 1024;
@@ -18,6 +19,16 @@ const SAMPLE_RATE: u32 = 2_048_000;
 enum RadioCmd {
     Freq(f32),
     Stream(bool),
+    Sweep { points: Vec<f32>, label: String },
+    CancelSweep,
+}
+
+struct SweepRun {
+    points: Vec<f32>,
+    index: usize,
+    samples: Vec<(f32, f32)>,
+    label: String,
+    return_mhz: f32,
 }
 
 pub struct RadioAdapter {
@@ -57,6 +68,14 @@ impl RadioAdapter {
         self.send(RadioCmd::Stream(on));
     }
 
+    pub fn start_sweep(&self, points: Vec<f32>, label: String) {
+        self.send(RadioCmd::Sweep { points, label });
+    }
+
+    pub fn cancel_sweep(&self) {
+        self.send(RadioCmd::CancelSweep);
+    }
+
     fn send(&self, cmd: RadioCmd) {
         if let Some(tx) = self.tx.lock().unwrap().as_ref() {
             let _ = tx.send(cmd);
@@ -68,6 +87,7 @@ fn radio_loop(status: Arc<Mutex<RadioStatus>>, rx: Receiver<RadioCmd>) {
     let mut streaming = false;
     let mut freq_mhz = 433.0_f32;
     let mut device: Option<RtlSdr> = None;
+    let mut sweep: Option<SweepRun> = None;
     let mut last_scan = Instant::now() - Duration::from_secs(10);
     let mut last_fft = Instant::now() - Duration::from_secs(1);
     let mut buf = vec![0u8; READ_LEN];
@@ -75,17 +95,15 @@ fn radio_loop(status: Arc<Mutex<RadioStatus>>, rx: Receiver<RadioCmd>) {
     let fft = planner.plan_fft_forward(FFT_LEN);
 
     loop {
+        let mut tune: Option<f32> = None;
         while let Ok(cmd) = rx.try_recv() {
             match cmd {
                 RadioCmd::Freq(mhz) => {
-                    freq_mhz = mhz.max(0.1);
-                    if let Some(sdr) = device.as_mut() {
-                        let hz = mhz_to_hz(freq_mhz);
-                        if let Err(err) = sdr.set_center_freq(hz) {
-                            tracing::warn!("SDR tune: {err}");
-                        }
+                    tune = Some(mhz.clamp(24.0, 1700.0));
+                    if sweep.take().is_some() {
+                        let mut state = status.lock().unwrap();
+                        state.scanning = false;
                     }
-                    status.lock().unwrap().center_freq_mhz = freq_mhz;
                 }
                 RadioCmd::Stream(on) => {
                     if !on {
@@ -97,6 +115,75 @@ fn radio_loop(status: Arc<Mutex<RadioStatus>>, rx: Receiver<RadioCmd>) {
                         }
                     }
                     streaming = on;
+                }
+                RadioCmd::Sweep { points, label } => {
+                    let mut state = status.lock().unwrap();
+                    state.scanning = true;
+                    state.scan_progress = 0.0;
+                    state.scan_hits.clear();
+                    state.scan_label = label.clone();
+                    sweep = Some(SweepRun {
+                        points,
+                        index: 0,
+                        samples: Vec::new(),
+                        label,
+                        return_mhz: freq_mhz,
+                    });
+                }
+                RadioCmd::CancelSweep => {
+                    if let Some(run) = sweep.take() {
+                        tune = Some(run.return_mhz);
+                        let mut state = status.lock().unwrap();
+                        state.scanning = false;
+                        state.scan_progress = if run.points.is_empty() {
+                            0.0
+                        } else {
+                            run.index as f32 / run.points.len() as f32
+                        };
+                    }
+                }
+            }
+        }
+        if let Some(mhz) = tune {
+            freq_mhz = mhz;
+            if let Some(sdr) = device.as_mut() {
+                if let Err(err) = sdr.set_center_freq(mhz_to_hz(freq_mhz)) {
+                    tracing::warn!("SDR tune: {err}");
+                }
+            }
+            status.lock().unwrap().center_freq_mhz = freq_mhz;
+        }
+
+        let step = sweep.as_mut().map(|run| sweep_step(&status, &mut device, run, &mut buf));
+        if let Some(step) = step {
+            match step {
+                SweepStep::Continue => continue,
+                SweepStep::Finished(back) => {
+                    sweep = None;
+                    freq_mhz = back;
+                    if let Some(sdr) = device.as_mut() {
+                        let _ = sdr.set_center_freq(mhz_to_hz(freq_mhz));
+                    }
+                    status.lock().unwrap().center_freq_mhz = freq_mhz;
+                    if !streaming {
+                        close_device(&mut device);
+                    }
+                    continue;
+                }
+                SweepStep::Failed(err) => {
+                    tracing::warn!("SDR sweep: {err}");
+                    sweep = None;
+                    let mut state = status.lock().unwrap();
+                    state.scanning = false;
+                    state.scan_label = "No receiver".into();
+                    state.readiness = if err == "no RTL-SDR" {
+                        Readiness::NotPresent
+                    } else {
+                        Readiness::Degraded
+                    };
+                    close_device(&mut device);
+                    std::thread::sleep(Duration::from_millis(400));
+                    continue;
                 }
             }
         }
@@ -159,6 +246,92 @@ fn radio_loop(status: Arc<Mutex<RadioStatus>>, rx: Receiver<RadioCmd>) {
             std::thread::sleep(Duration::from_millis(200));
         }
     }
+}
+
+enum SweepStep {
+    Continue,
+    Finished(f32),
+    Failed(String),
+}
+
+fn sweep_step(
+    status: &Mutex<RadioStatus>,
+    device: &mut Option<RtlSdr>,
+    run: &mut SweepRun,
+    buf: &mut [u8],
+) -> SweepStep {
+    if run.points.is_empty() || run.index >= run.points.len() {
+        finish_sweep(status, run);
+        return SweepStep::Finished(run.return_mhz);
+    }
+    let mhz = run.points[run.index];
+    if device.is_none() {
+        match open_sdr(mhz) {
+            Ok((sdr, name)) => {
+                *device = Some(sdr);
+                let mut state = status.lock().unwrap();
+                state.readiness = Readiness::Active;
+                state.device = name;
+                state.sample_rate = SAMPLE_RATE;
+                state.simulated = false;
+            }
+            Err(err) => return SweepStep::Failed(err),
+        }
+    }
+    let Some(sdr) = device.as_mut() else {
+        return SweepStep::Failed("no RTL-SDR".into());
+    };
+    if let Err(err) = sdr.set_center_freq(mhz_to_hz(mhz)) {
+        return SweepStep::Failed(err.to_string());
+    }
+    let _ = sdr.reset_buffer();
+    std::thread::sleep(Duration::from_millis(18));
+    let _ = sdr.read_sync(buf);
+    let n = match sdr.read_sync(buf) {
+        Ok(n) => n,
+        Err(err) => return SweepStep::Failed(err.to_string()),
+    };
+    run.samples.push((mhz, iq_power(&buf[..n])));
+    run.index += 1;
+    let hits = power_peaks(&run.samples);
+    let done = run.index >= run.points.len();
+    {
+        let mut state = status.lock().unwrap();
+        state.scanning = !done;
+        state.scan_progress = run.index as f32 / run.points.len() as f32;
+        state.scan_hits = hits;
+        state.scan_label = if done {
+            run.label.clone()
+        } else {
+            format!("{} · {:.3} MHz", run.label, mhz)
+        };
+    }
+    if done {
+        SweepStep::Finished(run.return_mhz)
+    } else {
+        SweepStep::Continue
+    }
+}
+
+fn finish_sweep(status: &Mutex<RadioStatus>, run: &SweepRun) {
+    let mut state = status.lock().unwrap();
+    state.scanning = false;
+    state.scan_progress = 1.0;
+    state.scan_hits = power_peaks(&run.samples);
+    state.scan_label = run.label.clone();
+}
+
+fn iq_power(iq: &[u8]) -> f32 {
+    if iq.is_empty() {
+        return 0.0;
+    }
+    let n = iq.len().min(4096);
+    let mut acc = 0.0_f32;
+    for &sample in &iq[..n] {
+        let v = (sample as f32 - 127.5) / 127.5;
+        acc += v * v;
+    }
+    (acc / n as f32).sqrt()
 }
 
 fn scan_devices(status: &Mutex<RadioStatus>, freq_mhz: f32) {

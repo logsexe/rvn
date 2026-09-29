@@ -64,6 +64,10 @@ export component SurfaceTile inherits Rectangle {
     in property <bool> selected: false;
     callback clicked;
 
+    horizontal-stretch: 1;
+    vertical-stretch: 1;
+    min-width: 0px;
+    min-height: 0px;
     border-radius: Theme.radius-lg;
     border-width: 1px;
     border-color: selected ? Theme.border-accent : Theme.border;
@@ -96,18 +100,18 @@ export component SurfaceTile inherits Rectangle {
     }
 
     VerticalLayout {
-        padding: 22px;
-        padding-top: 26px;
-        spacing: 18px;
+        padding: 16px;
+        padding-top: 18px;
+        spacing: 12px;
 
         HorizontalLayout {
             alignment: center;
             spacing: Theme.space-12;
 
             Rectangle {
-                width: 46px;
-                height: 46px;
-                border-radius: 14px;
+                width: 40px;
+                height: 40px;
+                border-radius: 12px;
                 background: Theme.bg-elevated;
                 border-width: 1px;
                 border-color: Theme.border;
@@ -133,7 +137,7 @@ export component SurfaceTile inherits Rectangle {
 
             Text {
                 text: title;
-                font-size: 22px;
+                font-size: 20px;
                 font-weight: 600;
                 color: Theme.text-primary;
                 font-family: Theme.font-sans;
@@ -157,7 +161,7 @@ export component TopBar inherits Rectangle {
     in property <string> mesh-status: "OFFLINE";
     in property <string> power-str: "—";
 
-    height: 56px;
+    height: 48px;
     background: Theme.bg-base;
 
     Rectangle {

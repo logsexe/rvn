@@ -184,6 +184,18 @@ pub struct RadioStatus {
     /// True when the bins are a stand-in rather than samples from a dongle.
     pub simulated: bool,
     pub spectrum: Vec<f32>,
+    /// A band sweep is in progress. The waterfall pauses until it finishes.
+    pub scanning: bool,
+    pub scan_progress: f32,
+    pub scan_label: String,
+    pub scan_hits: Vec<ScanHit>,
+}
+
+/// One energy peak from a receive-only sweep.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ScanHit {
+    pub mhz: f32,
+    pub power: f32,
 }
 
 impl Default for RadioStatus {
@@ -195,6 +207,10 @@ impl Default for RadioStatus {
             sample_rate: 0,
             simulated: false,
             spectrum: vec![0.0; SPECTRUM_BINS],
+            scanning: false,
+            scan_progress: 0.0,
+            scan_label: String::new(),
+            scan_hits: Vec::new(),
         }
     }
 }
