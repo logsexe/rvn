@@ -1,55 +1,32 @@
 # RVN
 
-**Off-grid field cyberdeck · FIELD//OS**
+**FIELD//OS** — the operating shell for an off-grid field cyberdeck.
 
-Modern, professional, futuristic operator interface for a Raspberry Pi 5 cyberdeck in a Pelican-style case.
+RVN is the instrument an operator opens in the field: navigation, radio awareness, mesh, and the health of the machine, in one full-screen shell. It is built for a Raspberry Pi 5 in a hard case, and for days when the network is absent.
 
-## V0.1 Surfaces
+## Goal
 
-| Surface   | Purpose                          |
-|-----------|----------------------------------|
-| **NAV**   | GPS · offline maps · waypoints   |
-| **RADIO** | Receive-only SDR · spectrum      |
-| **MESH**  | Meshtastic nodes · messaging     |
-| **TERMINAL** | Explicit operator shell       |
-| **SYSTEM** | Health · power · hardware status |
+A field computer that remains a complete instrument with nothing to connect to. The lid opens onto a shell that already knows where it is, what it can hear, who is on the mesh, and whether the kit itself is sound.
 
-## Design Goals
+## Objectives
 
-- Modern, professional, dynamic UI
-- Offline-first / air-gap by default
-- Explicit operator control
-- Fail-soft hardware adapters
-- Keyboard + touch optimised for field use
+- Give the operator one surface for position, spectrum, mesh, and the host.
+- Keep every transmit, scan, and shell action in the operator's hands.
+- Stay up when a module is missing, unplugged, or unhealthy.
+- Size power and endurance from the real kit, measured under load.
+- Treat the cased Pi as the product. A desk window is how the shell is built.
 
-## Quick Start (development)
+## Approach
 
-```bash
-# Requires Rust 1.92+
-cargo run
-```
+The shell is a small set of instruments over a single source of truth. Hardware sits behind adapters, so a live module and a stand-in report the same status and the interface does not care which one is attached.
 
-Runs windowed. On the Pi appliance it will later launch full-screen.
+Each subsystem announces its own readiness. A missing radio leaves navigation alive. A quiet mesh leaves the spectrum alive. The shell degrades one instrument at a time.
 
-## Project Layout
+Radio listening is the default posture. Transmission is a separate, armed act. The terminal runs only what the operator types. Nothing in the shell reaches outward unless that reach was asked for.
 
-```
-rvn/
-├── ui/                 # Spint UI (theme, components, app)
-├── src/
-│   ├── main.rs
-│   ├── core/           # domain, state, events (coming)
-│   ├── adapters/       # hardware abstractions (coming)
-│   └── surfaces/       # surface-specific logic (coming)
-├── assets/
-└── docs/
-```
+The case, the display, the hubs, and the modules are commissioned together. Current draw is measured before a battery is chosen, so the pack matches the kit that will actually be carried.
 
-## Stack
-
-- **Rust** 2024 edition
-- **Slint 1.18** — declarative, high-performance UI
-- Tokio · tracing · serde
+RVN is a native Rust shell. The interface is declared, the state is owned in one place, and the Pi build is the one that ships in the case.
 
 ## License
 
