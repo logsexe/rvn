@@ -8,7 +8,7 @@ use crate::core::hardware::PlatformStatus;
 use super::gps::GpsAdapter;
 use super::host::HostAdapter;
 use super::mesh::MeshAdapter;
-use super::ports::PortClaims;
+use super::ports::{attachments, PortClaims};
 use super::sdr::RadioAdapter;
 use super::{MeshInbound, Platform};
 
@@ -35,14 +35,19 @@ impl LivePlatform {
 impl Platform for LivePlatform {
     fn poll(&self) -> PlatformStatus {
         let host = self.host.snapshot();
+        let gps = self.gps.snapshot();
+        let radio = self.radio.snapshot();
+        let mesh = self.mesh.snapshot();
+        let attachments = attachments(&gps, &radio, &mesh);
         PlatformStatus {
             compute: host.compute,
             power: host.power,
-            gps: self.gps.snapshot(),
-            radio: self.radio.snapshot(),
-            mesh: self.mesh.snapshot(),
+            gps,
+            radio,
+            mesh,
             network: host.network,
             storage: host.storage,
+            attachments,
         }
     }
 

@@ -15,10 +15,10 @@ component FixBadge inherits Rectangle {
                   readiness == "warn" ? Theme.warn : Theme.border;
     background: readiness == "ok" || readiness == "active" ? Theme.accent-muted :
                 Theme.bg-panel;
-    padding-left: 10px;
-    padding-right: 10px;
 
     HorizontalLayout {
+        padding-left: 10px;
+        padding-right: 10px;
         spacing: 6px;
         alignment: center;
 
@@ -51,7 +51,7 @@ component CoordinateRow inherits HorizontalLayout {
         font-weight: 700;
         color: Theme.text-faint;
         font-family: Theme.font-mono;
-        letter-spacing: 2px;
+        letter-spacing: 1px;
         min-width: 40px;
     }
 
@@ -144,7 +144,7 @@ component SectionLabel inherits Text {
     font-weight: 700;
     color: Theme.text-faint;
     font-family: Theme.font-mono;
-    letter-spacing: 2px;
+    letter-spacing: 1px;
 }
 
 component Metric inherits HorizontalLayout {
@@ -224,12 +224,11 @@ component HomeButton inherits Rectangle {
 
     Text {
         width: 100%; height: 100%;
-        text: "ESC  HOME";
-        font-size: 10px;
+        text: "Esc  home";
+        font-size: 12px;
         font-weight: 600;
-        color: Theme.text-muted;
-        font-family: Theme.font-mono;
-        letter-spacing: 1px;
+        color: Theme.text-secondary;
+        font-family: Theme.font-sans;
         horizontal-alignment: center;
         vertical-alignment: center;
     }
@@ -240,6 +239,7 @@ component HomeButton inherits Rectangle {
     }
 }
 export component NavSurface inherits Rectangle {
+    in property <string> device: "";
     // Fix
     in property <string> readiness: "offline";
     in property <string> fix: "NO FIX";
@@ -277,11 +277,10 @@ export component NavSurface inherits Rectangle {
 
             Text {
                 text: "NAV";
-                font-size: 20px;
-                font-weight: 700;
-                color: Theme.accent;
-                font-family: Theme.font-mono;
-                letter-spacing: 2px;
+                font-size: 22px;
+                font-weight: 600;
+                color: Theme.text-primary;
+                font-family: Theme.font-sans;
             }
 
             Text {
@@ -337,6 +336,14 @@ export component NavSurface inherits Rectangle {
                             axis: "LON";
                             value: lon;
                             large: true;
+                        }
+
+                        if device != "": Text {
+                            text: device;
+                            font-size: 13px;
+                            color: Theme.accent-dim;
+                            font-family: Theme.font-sans;
+                            wrap: word-wrap;
                         }
                     }
                 }

@@ -1,3 +1,8 @@
+import "fonts/Inter-Regular.ttf";
+import "fonts/Inter-SemiBold.ttf";
+import "fonts/Inter-Bold.ttf";
+import "fonts/JetBrainsMono-Regular.ttf";
+import "fonts/JetBrainsMono-Medium.ttf";
 import { Theme } from "theme.slint";
 import { SurfaceTile, TopBar } from "components.slint";
 import { SystemSurface } from "system.slint";
@@ -5,7 +10,7 @@ import { NavSurface } from "nav.slint";
 import { RadioSurface } from "radio.slint";
 import { MeshSurface } from "mesh.slint";
 import { TerminalSurface } from "terminal.slint";
-import { WaypointRow, MeshLine, MeshNode } from "models.slint";
+import { WaypointRow, MeshLine, MeshNode, LinkRow } from "models.slint";
 
 export component AppWindow inherits Window {
     title: "RVN";
@@ -22,6 +27,8 @@ export component AppWindow inherits Window {
     in-out property <string> gps-status: "NO FIX";
     in-out property <string> mesh-status: "OFFLINE";
     in-out property <string> power-str: "—";
+    in-out property <string> device-notice: "";
+    in-out property <[LinkRow]> links;
 
     // Card status
     in-out property <string> nav-status: "offline";
@@ -41,6 +48,7 @@ export component AppWindow inherits Window {
     in-out property <string> sys-power-voltage: "—";
     in-out property <bool> sys-throttled: false;
     in-out property <string> sys-gps-readiness: "offline";
+    in-out property <string> sys-gps-port: "—";
     in-out property <string> sys-gps-fix: "NO FIX";
     in-out property <int> sys-gps-sats: 0;
     in-out property <string> sys-gps-lat: "—";
@@ -49,6 +57,7 @@ export component AppWindow inherits Window {
     in-out property <string> sys-radio-device: "—";
     in-out property <string> sys-radio-freq: "—";
     in-out property <string> sys-mesh-readiness: "offline";
+    in-out property <string> sys-mesh-port: "—";
     in-out property <string> sys-mesh-node: "—";
     in-out property <int> sys-mesh-nodes: 0;
     in-out property <float> sys-storage-used: 0;
@@ -56,6 +65,7 @@ export component AppWindow inherits Window {
     in-out property <string> sys-net-ifaces: "—";
 
     // NAV
+    in-out property <string> nav-device: "";
     in-out property <string> nav-readiness: "offline";
     in-out property <string> nav-fix: "NO FIX";
     in-out property <int> nav-sats: 0;
@@ -139,6 +149,27 @@ export component AppWindow inherits Window {
             power-str: power-str;
         }
 
+        if device-notice != "": Rectangle {
+            height: 40px;
+            background: Theme.accent-muted;
+
+            HorizontalLayout {
+                padding-left: 20px;
+                padding-right: 20px;
+                alignment: center;
+
+                Text {
+                    text: device-notice;
+                    font-size: 14px;
+                    font-weight: 600;
+                    color: Theme.accent-dim;
+                    font-family: Theme.font-sans;
+                    overflow: elide;
+                    horizontal-stretch: 1;
+                }
+            }
+        }
+
         Rectangle {
             background: Theme.bg-void;
             vertical-stretch: 1;
@@ -153,19 +184,29 @@ export component AppWindow inherits Window {
                         alignment: center;
                         Text {
                             text: "FIELD//OS";
-                            font-size: 11px;
-                            font-weight: 700;
-                            color: Theme.text-faint;
-                            font-family: Theme.font-mono;
-                            letter-spacing: 3px;
+                            font-size: 13px;
+                            font-weight: 600;
+                            color: Theme.text-secondary;
+                            font-family: Theme.font-sans;
+                            letter-spacing: 0.6px;
                         }
                         Rectangle { horizontal-stretch: 1; }
                         Text {
-                            text: "1-5 OPEN   ·   ESC HOME";
-                            font-size: 11px;
-                            color: Theme.text-faint;
-                            font-family: Theme.font-mono;
-                            letter-spacing: 1px;
+                            text: "1 – 5 open    ·    Esc home";
+                            font-size: 12px;
+                            color: Theme.text-muted;
+                            font-family: Theme.font-sans;
+                        }
+                    }
+
+                    if links.length > 0: VerticalLayout {
+                        spacing: 4px;
+                        for link in links: Text {
+                            text: link.text;
+                            font-size: 13px;
+                            color: Theme.text-secondary;
+                            font-family: Theme.font-sans;
+                            wrap: word-wrap;
                         }
                     }
 
@@ -213,12 +254,50 @@ export component AppWindow inherits Window {
                             status: system-status;
                             clicked => { active-surface = 4; surface-selected(4); }
                         }
-                        Rectangle { row: 1; col: 2; background: transparent; }
+                        Rectangle {
+                            row: 1;
+                            col: 2;
+                            border-radius: Theme.radius-lg;
+                            border-width: 1px;
+                            border-color: Theme.border;
+                            background: Theme.bg-base;
+
+                            VerticalLayout {
+                                padding: 26px;
+                                spacing: 12px;
+
+                                Text {
+                                    text: op-name;
+                                    font-size: 28px;
+                                    font-weight: 600;
+                                    color: Theme.text-primary;
+                                    font-family: Theme.font-sans;
+                                }
+
+                                Text {
+                                    text: "Five instruments share this shell. A missing module leaves its own tile quiet.";
+                                    font-size: 14px;
+                                    color: Theme.text-muted;
+                                    font-family: Theme.font-sans;
+                                    wrap: word-wrap;
+                                }
+
+                                Rectangle { vertical-stretch: 1; }
+
+                                Text {
+                                    text: "Listening first. Transmit when armed.";
+                                    font-size: 12px;
+                                    color: Theme.accent-dim;
+                                    font-family: Theme.font-sans;
+                                }
+                            }
+                        }
                     }
                 }
             }
 
             if active-surface == 0: NavSurface {
+                device: nav-device;
                 readiness: nav-readiness;
                 fix: nav-fix;
                 sats: nav-sats;
@@ -289,6 +368,7 @@ export component AppWindow inherits Window {
                 power-percent: sys-power-percent;
                 power-voltage: sys-power-voltage;
                 throttled: sys-throttled;
+                gps-port: sys-gps-port;
                 gps-readiness: sys-gps-readiness;
                 gps-fix: sys-gps-fix;
                 gps-sats: sys-gps-sats;
@@ -297,8 +377,10 @@ export component AppWindow inherits Window {
                 radio-readiness: sys-radio-readiness;
                 radio-device: sys-radio-device;
                 radio-freq: sys-radio-freq;
+                mesh-port: sys-mesh-port;
                 mesh-readiness: sys-mesh-readiness;
                 mesh-node: sys-mesh-node;
+                links: links;
                 mesh-nodes: sys-mesh-nodes;
                 storage-used: sys-storage-used;
                 storage-free: sys-storage-free;

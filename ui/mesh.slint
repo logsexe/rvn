@@ -12,17 +12,21 @@ component TxBadge inherits Rectangle {
     border-width: 1px;
     border-color: enabled ? Theme.warn : Theme.border;
     background: enabled ? #fbbf2422 : Theme.bg-panel;
-    padding-left: 10px;
-    padding-right: 10px;
 
-    Text {
-        text: enabled ? "TX ARMED" : "TX SAFE";
-        font-size: 10px;
-        font-weight: 700;
-        color: enabled ? Theme.warn : Theme.text-muted;
-        font-family: Theme.font-mono;
-        letter-spacing: 1px;
-        vertical-alignment: center;
+    HorizontalLayout {
+        padding-left: 10px;
+        padding-right: 10px;
+        alignment: center;
+
+        Text {
+            text: enabled ? "TX ARMED" : "TX SAFE";
+            font-size: 10px;
+            font-weight: 700;
+            color: enabled ? Theme.warn : Theme.text-muted;
+            font-family: Theme.font-mono;
+            letter-spacing: 1px;
+            vertical-alignment: center;
+        }
     }
 }
 
@@ -137,7 +141,7 @@ component SectionLabel inherits Text {
     font-weight: 700;
     color: Theme.text-faint;
     font-family: Theme.font-mono;
-    letter-spacing: 2px;
+    letter-spacing: 1px;
 }
 
 component Metric inherits HorizontalLayout {
@@ -218,12 +222,11 @@ component HomeButton inherits Rectangle {
 
     Text {
         width: 100%; height: 100%;
-        text: "ESC  HOME";
-        font-size: 10px;
+        text: "Esc  home";
+        font-size: 12px;
         font-weight: 600;
-        color: Theme.text-muted;
-        font-family: Theme.font-mono;
-        letter-spacing: 1px;
+        color: Theme.text-secondary;
+        font-family: Theme.font-sans;
         horizontal-alignment: center;
         vertical-alignment: center;
     }
@@ -262,11 +265,10 @@ export component MeshSurface inherits Rectangle {
 
             Text {
                 text: "MESH";
-                font-size: 20px;
-                font-weight: 700;
-                color: Theme.accent;
-                font-family: Theme.font-mono;
-                letter-spacing: 2px;
+                font-size: 22px;
+                font-weight: 600;
+                color: Theme.text-primary;
+                font-family: Theme.font-sans;
             }
 
             Text {

@@ -7,6 +7,7 @@ use std::time::{Duration, Instant};
 use crate::core::hardware::*;
 use crate::surfaces::spectrum_bins;
 
+use super::ports::attachments;
 use super::{MeshInbound, Platform};
 
 const PEERS: [&str; 3] = ["!b2c3d4e5", "!c3d4e5f6", "!d4e5f6a7"];
@@ -88,6 +89,8 @@ impl Platform for MockAdapter {
                 course_deg: Some(48.0 + (t * 1.5) % 24.0),
                 hdop: Some(0.9),
                 age_ms: Some(400),
+                device: "/dev/ttyACM0".into(),
+                label: "simulated GNSS".into(),
             };
         }
 
@@ -132,6 +135,8 @@ impl Platform for MockAdapter {
                 }),
                 region: "AU915".into(),
                 peers,
+                port: "/dev/ttyUSB0".into(),
+                label: "simulated mesh".into(),
             };
         }
 
@@ -149,6 +154,8 @@ impl Platform for MockAdapter {
                 spectrum: spectrum_bins(elapsed.as_secs_f32(), streaming, true, freq),
             };
         }
+
+        status.attachments = attachments(&status.gps, &status.radio, &status.mesh);
 
         if elapsed > Duration::from_secs(9) {
             status.power = PowerStatus {

@@ -1,0 +1,4 @@
+Inter and JetBrains Mono are bundled with RVN under the SIL Open Font License, Version 1.1.
+Inter copyright belongs to The Inter Project Authors.
+JetBrains Mono copyright belongs to The JetBrains Mono Project Authors.
+The license text is at https://openfontlicense.org

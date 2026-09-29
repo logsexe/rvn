@@ -40,9 +40,9 @@ component RectDivider inherits Rectangle {
 export component StatusDot inherits Rectangle {
     in property <string> state: "offline";
 
-    width: 8px;
-    height: 8px;
-    border-radius: 4px;
+    width: 9px;
+    height: 9px;
+    border-radius: 5px;
 
     background: state == "ok" ? Theme.status-ok :
                 state == "warn" ? Theme.status-warn :
@@ -68,11 +68,9 @@ export component SurfaceTile inherits Rectangle {
     border-width: 1px;
     border-color: selected ? Theme.border-accent : Theme.border;
     background: selected ? Theme.bg-elevated : Theme.bg-panel;
+    clip: true;
 
-    drop-shadow-blur: selected ? 20px : 0px;
-    drop-shadow-color: selected ? Theme.accent-glow : transparent;
-
-    animate border-color, background, drop-shadow-blur {
+    animate border-color, background {
         duration: 160ms;
         easing: ease-out;
     }
@@ -81,8 +79,16 @@ export component SurfaceTile inherits Rectangle {
         hover when ta.has-hover && !selected: {
             background: Theme.bg-hover;
             border-color: Theme.border-strong;
+            bar.background: Theme.accent;
         }
     ]
+
+    bar := Rectangle {
+        y: 0;
+        height: 2px;
+        width: 100%;
+        background: selected ? Theme.accent : Theme.border;
+    }
 
     ta := TouchArea {
         clicked => { root.clicked(); }
@@ -90,40 +96,53 @@ export component SurfaceTile inherits Rectangle {
     }
 
     VerticalLayout {
-        padding: Theme.space-20;
-        spacing: Theme.space-12;
+        padding: 22px;
+        padding-top: 26px;
+        spacing: 18px;
 
         HorizontalLayout {
             alignment: center;
+            spacing: Theme.space-12;
 
-            Text {
-                text: glyph;
-                font-size: 26px;
-                color: selected ? Theme.accent : Theme.text-secondary;
-                animate color { duration: 160ms; }
+            Rectangle {
+                width: 46px;
+                height: 46px;
+                border-radius: 14px;
+                background: Theme.bg-elevated;
+                border-width: 1px;
+                border-color: Theme.border;
+
+                Text {
+                    width: 100%;
+                    height: 100%;
+                    text: glyph;
+                    font-size: 18px;
+                    color: Theme.accent;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
             }
 
             Rectangle { horizontal-stretch: 1; }
 
-            StatusDot {
-                state: status;
-            }
+            StatusDot { state: status; }
         }
 
         VerticalLayout {
-            spacing: 3px;
+            spacing: 4px;
 
             Text {
                 text: title;
-                font-size: 18px;
-                font-weight: 700;
+                font-size: 22px;
+                font-weight: 600;
                 color: Theme.text-primary;
                 font-family: Theme.font-sans;
+                letter-spacing: 0.2px;
             }
 
             Text {
                 text: subtitle;
-                font-size: 12px;
+                font-size: 13px;
                 color: Theme.text-muted;
                 font-family: Theme.font-sans;
             }
@@ -138,8 +157,8 @@ export component TopBar inherits Rectangle {
     in property <string> mesh-status: "OFFLINE";
     in property <string> power-str: "—";
 
-    height: 44px;
-    background: Theme.bg-void;
+    height: 56px;
+    background: Theme.bg-base;
 
     Rectangle {
         y: parent.height - 1px;
@@ -149,18 +168,25 @@ export component TopBar inherits Rectangle {
     }
 
     HorizontalLayout {
-        padding-left: Theme.space-16;
-        padding-right: Theme.space-16;
-        spacing: Theme.space-16;
+        padding-left: 20px;
+        padding-right: 20px;
+        spacing: 14px;
         alignment: center;
+
+        Rectangle {
+            width: 8px;
+            height: 8px;
+            border-radius: 2px;
+            background: Theme.accent;
+        }
 
         Text {
             text: "RVN";
-            font-size: 15px;
-            font-weight: 800;
-            color: Theme.accent;
-            font-family: Theme.font-mono;
-            letter-spacing: 3px;
+            font-size: 14px;
+            font-weight: 600;
+            color: Theme.text-primary;
+            font-family: Theme.font-sans;
+            letter-spacing: 1.2px;
         }
 
         RectDivider { }
@@ -168,9 +194,9 @@ export component TopBar inherits Rectangle {
         Text {
             text: op-name;
             font-size: 12px;
-            color: Theme.text-muted;
-            font-family: Theme.font-mono;
-            letter-spacing: 1px;
+            color: Theme.text-secondary;
+            font-family: Theme.font-sans;
+            letter-spacing: 0.4px;
         }
 
         Rectangle { horizontal-stretch: 1; }

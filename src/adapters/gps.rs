@@ -9,8 +9,8 @@ use serialport::SerialPort;
 
 use crate::core::hardware::{GpsFix, GpsStatus, Readiness};
 
-use super::nmea::{apply_sentence, NmeaState};
-use super::ports::{is_timeout, usb_serial_ports, PortClaims};
+use super::nmea::{apply_sentence, has_fix_sentence, split_lines, NmeaState};
+use super::ports::{is_timeout, port_label, usb_serial_ports, PortClaims};
 
 struct GpsInner {
     status: GpsStatus,
@@ -71,13 +71,16 @@ fn gps_loop(slot: Arc<Mutex<GpsInner>>, claims: Arc<PortClaims>, gate: Arc<Atomi
         match find_gps(&claims) {
             Some((name, mut port)) => {
                 gate.store(true, Ordering::SeqCst);
-                tracing::info!("GPS linked on {name}");
+                let label = port_label(&name);
+                tracing::info!("GPS linked on {name} ({label})");
                 {
                     let mut inner = slot.lock().unwrap();
                     inner.open = true;
+                    inner.status.device = name.clone();
+                    inner.status.label = label;
                     inner.publish();
                 }
-                read_gps(&mut *port, &slot);
+                read_gps(&name, &mut *port, &slot);
                 claims.release(&name);
                 let mut inner = slot.lock().unwrap();
                 *inner = GpsInner {
@@ -136,7 +139,7 @@ fn looks_like_nmea(port: &mut dyn SerialPort) -> bool {
                     let drop_to = acc.len() - 1024;
                     acc.drain(..drop_to);
                 }
-                if acc.contains("$G") || acc.contains("$B") {
+                if has_fix_sentence(&acc) {
                     return true;
                 }
             }
@@ -148,17 +151,26 @@ fn looks_like_nmea(port: &mut dyn SerialPort) -> bool {
     false
 }
 
-fn read_gps(port: &mut dyn SerialPort, slot: &Mutex<GpsInner>) {
+fn read_gps(name: &str, port: &mut dyn SerialPort, slot: &Mutex<GpsInner>) {
     let mut buf = [0u8; 256];
     let mut acc = String::new();
     let mut nmea = NmeaState::default();
+    let mut accepted = 0u32;
+    let mut noted_raw = false;
     loop {
         match port.read(&mut buf) {
             Ok(n) if n > 0 => {
                 acc.push_str(&String::from_utf8_lossy(&buf[..n]));
-                while let Some(idx) = acc.find('\n') {
-                    let line: String = acc.drain(..=idx).collect();
+                for line in split_lines(&mut acc) {
                     if apply_sentence(&mut nmea, &line) {
+                        accepted += 1;
+                        if accepted == 1 {
+                            tracing::info!(
+                                "GPS sentence on {name}: {:?} sats {}",
+                                nmea.fix,
+                                nmea.satellites
+                            );
+                        }
                         let mut inner = slot.lock().unwrap();
                         inner.open = true;
                         inner.last_sentence = Some(Instant::now());
@@ -171,6 +183,10 @@ fn read_gps(port: &mut dyn SerialPort, slot: &Mutex<GpsInner>) {
                         inner.status.course_deg = nmea.course_deg;
                         inner.status.hdop = nmea.hdop;
                         inner.publish();
+                    } else if !noted_raw && line.contains('$') {
+                        noted_raw = true;
+                        let sample: String = line.chars().take(80).collect();
+                        tracing::info!("GPS raw on {name}: {sample}");
                     }
                 }
                 if acc.len() > 4096 {

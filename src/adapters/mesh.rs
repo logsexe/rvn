@@ -13,7 +13,7 @@ use serialport::SerialPort;
 
 use crate::core::hardware::{MeshPeer, MeshStatus, Readiness};
 
-use super::ports::{is_timeout, usb_serial_ports, PortClaims};
+use super::ports::{is_timeout, port_label, usb_serial_ports, PortClaims};
 use super::proto::{
     decode_from_radio, encode_heartbeat, encode_text_packet, encode_want_config, frame,
     remember_packet, Framer, RadioMessage,
@@ -157,10 +157,13 @@ fn mesh_loop(
     loop {
         match find_mesh(&claims) {
             Some((name, open)) => {
-                tracing::info!("MESH linked on {name}");
+                let label = port_label(&name);
+                tracing::info!("MESH linked on {name} ({label})");
                 {
                     let mut inner = slot.lock().unwrap();
                     inner.status.readiness = Readiness::Degraded;
+                    inner.status.port = name.clone();
+                    inner.status.label = label;
                 }
                 run_mesh(&slot, &rx, open);
                 claims.release(&name);

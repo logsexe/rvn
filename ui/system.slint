@@ -1,5 +1,6 @@
 import { Theme } from "theme.slint";
 import { StatusDot } from "components.slint";
+import { LinkRow } from "models.slint";
 
 // SYSTEM — platform instrument panel
 
@@ -8,7 +9,7 @@ component SectionLabel inherits Text {
     font-weight: 700;
     color: Theme.text-faint;
     font-family: Theme.font-mono;
-    letter-spacing: 2px;
+    letter-spacing: 1px;
 }
 
 component InstrumentCard inherits Rectangle {
@@ -86,12 +87,11 @@ component HomeButton inherits Rectangle {
 
     Text {
         width: 100%; height: 100%;
-        text: "ESC  HOME";
-        font-size: 10px;
+        text: "Esc  home";
+        font-size: 12px;
         font-weight: 600;
-        color: Theme.text-muted;
-        font-family: Theme.font-mono;
-        letter-spacing: 1px;
+        color: Theme.text-secondary;
+        font-family: Theme.font-sans;
         horizontal-alignment: center;
         vertical-alignment: center;
     }
@@ -120,6 +120,7 @@ export component SystemSurface inherits Rectangle {
     in property <string> power-voltage: "—";
     in property <bool> throttled: false;
 
+    in property <string> gps-port: "—";
     in property <string> gps-readiness: "offline";
     in property <string> gps-fix: "NO FIX";
     in property <int> gps-sats: 0;
@@ -130,7 +131,9 @@ export component SystemSurface inherits Rectangle {
     in property <string> radio-device: "—";
     in property <string> radio-freq: "—";
 
+    in property <string> mesh-port: "—";
     in property <string> mesh-readiness: "offline";
+    in property <[LinkRow]> links;
     in property <string> mesh-node: "—";
     in property <int> mesh-nodes: 0;
 
@@ -153,11 +156,10 @@ export component SystemSurface inherits Rectangle {
 
             Text {
                 text: "SYSTEM";
-                font-size: 20px;
-                font-weight: 700;
-                color: Theme.accent;
-                font-family: Theme.font-mono;
-                letter-spacing: 2px;
+                font-size: 22px;
+                font-weight: 600;
+                color: Theme.text-primary;
+                font-family: Theme.font-sans;
             }
 
             Text {
@@ -234,9 +236,32 @@ export component SystemSurface inherits Rectangle {
                 SectionLabel { text: "FIELD MODULES"; }
 
                 InstrumentCard {
+                    title: "USB";
+                    status: links.length > 0 ? "ok" : "offline";
+
+                    if links.length == 0: Text {
+                        text: "Nothing plugged in";
+                        font-size: 12px;
+                        color: Theme.text-muted;
+                        font-family: Theme.font-sans;
+                    }
+                    if links.length > 0: VerticalLayout {
+                        spacing: 4px;
+                        for link in links: Text {
+                            text: link.text;
+                            font-size: 12px;
+                            color: Theme.text-secondary;
+                            font-family: Theme.font-sans;
+                            wrap: word-wrap;
+                        }
+                    }
+                }
+
+                InstrumentCard {
                     title: "GPS";
                     status: gps-readiness;
 
+                    Metric { label: "PORT"; value: gps-port; }
                     Metric { label: "FIX"; value: gps-fix; }
                     Metric { label: "SATS"; value: "" + gps-sats; }
                     Metric { label: "LAT"; value: gps-lat; }
@@ -256,6 +281,7 @@ export component SystemSurface inherits Rectangle {
                     title: "MESH";
                     status: mesh-readiness;
 
+                    Metric { label: "PORT"; value: mesh-port; }
                     Metric { label: "NODE"; value: mesh-node; }
                     Metric { label: "HEARD"; value: "" + mesh-nodes + " nodes"; }
                     Metric { label: "STACK"; value: "Meshtastic"; }

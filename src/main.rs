@@ -65,6 +65,7 @@ fn main() -> Result<()> {
         let platform = platform.clone();
         let state = state.clone();
         let controls = controls.clone();
+        let mut seen_links: Vec<String> = Vec::new();
         ui_timer.start(TimerMode::Repeated, Duration::from_millis(500), move || {
             let Some(ui) = ui_weak.upgrade() else {
                 return;
@@ -75,6 +76,17 @@ fn main() -> Result<()> {
                 st.clock = Local::now().format("%H:%M:%S").to_string();
                 st.platform = platform.poll();
                 st.sample_track();
+                let lines: Vec<String> = st
+                    .platform
+                    .attachments
+                    .iter()
+                    .map(|row| row.text.clone())
+                    .collect();
+                if let Some(fresh) = lines.iter().find(|line| !seen_links.contains(*line)) {
+                    st.device_notice = fresh.clone();
+                    info!("{fresh}");
+                }
+                seen_links.clone_from(&lines);
                 if !inbox.is_empty() {
                     let time = Local::now().format("%H:%M:%S").to_string();
                     for message in &inbox {
@@ -332,6 +344,28 @@ fn main() -> Result<()> {
     Ok(())
 }
 
+fn device_line(port: &str, label: &str) -> String {
+    if port.is_empty() || port == "—" {
+        "—".into()
+    } else if label.is_empty() || label == "—" {
+        port.to_string()
+    } else {
+        format!("{port} · {label}")
+    }
+}
+
+fn nav_link(gps: &core::hardware::GpsStatus) -> String {
+    if gps.readiness == Readiness::NotPresent || gps.device == "—" {
+        return String::new();
+    }
+    let using = device_line(&gps.device, &gps.label);
+    if gps.latitude.is_none() {
+        format!("Using {using} for NAV. Waiting for a sky fix.")
+    } else {
+        format!("Using {using} for NAV")
+    }
+}
+
 fn push_ui(ui: &AppWindow, state: &AppState, ctrl: &LiveControls) {
     sync_ui(ui, state, ctrl, &state.platform.radio.spectrum);
 }
@@ -357,6 +391,17 @@ fn sync_ui(ui: &AppWindow, state: &AppState, ctrl: &LiveControls, spectrum: &[f3
     ui.set_gps_status(state.gps_display().into());
     ui.set_mesh_status(state.mesh_display().into());
     ui.set_power_str(state.power_display().into());
+    ui.set_device_notice(state.device_notice.clone().into());
+    ui.set_links(ModelRc::new(VecModel::from(
+        state
+            .platform
+            .attachments
+            .iter()
+            .map(|row| LinkRow {
+                text: row.text.clone().into(),
+            })
+            .collect::<Vec<_>>(),
+    )));
 
     ui.set_nav_status(state.nav_card_status().into());
     ui.set_radio_status(radio_status.into());
@@ -386,6 +431,7 @@ fn sync_ui(ui: &AppWindow, state: &AppState, ctrl: &LiveControls, spectrum: &[f3
             .into(),
     );
     ui.set_sys_throttled(p.power.throttled);
+    ui.set_sys_gps_port(device_line(&p.gps.device, &p.gps.label).into());
     ui.set_sys_gps_readiness(p.gps.readiness.as_status_str().into());
     ui.set_sys_gps_fix(p.gps.fix.as_display().into());
     ui.set_sys_gps_sats(p.gps.satellites as i32);
@@ -412,6 +458,7 @@ fn sync_ui(ui: &AppWindow, state: &AppState, ctrl: &LiveControls, spectrum: &[f3
             format!("{:.3} MHz", ctrl.radio_freq_mhz).into()
         },
     );
+    ui.set_sys_mesh_port(device_line(&p.mesh.port, &p.mesh.label).into());
     ui.set_sys_mesh_readiness(p.mesh.readiness.as_status_str().into());
     ui.set_sys_mesh_node(p.mesh.node_id.clone().into());
     ui.set_sys_mesh_nodes(p.mesh.nodes_heard as i32);
@@ -419,6 +466,7 @@ fn sync_ui(ui: &AppWindow, state: &AppState, ctrl: &LiveControls, spectrum: &[f3
     ui.set_sys_storage_free(format!("{:.0} GB free", p.storage.data_free_gb).into());
     ui.set_sys_net_ifaces(p.network.interfaces.join(", ").into());
 
+    ui.set_nav_device(nav_link(&p.gps).into());
     ui.set_nav_readiness(p.gps.readiness.as_status_str().into());
     ui.set_nav_fix(p.gps.fix.as_display().into());
     ui.set_nav_sats(p.gps.satellites as i32);

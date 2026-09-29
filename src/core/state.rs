@@ -84,6 +84,8 @@ pub struct AppState {
     pub last_track_lon: Option<f64>,
     pub nav_notice: String,
     pub mesh_messages: Vec<MeshMessage>,
+    /// Latest USB assignment, shown until a newer device appears.
+    pub device_notice: String,
 }
 
 impl Default for AppState {
@@ -100,6 +102,7 @@ impl Default for AppState {
             last_track_lon: None,
             nav_notice: String::new(),
             mesh_messages: Vec::new(),
+            device_notice: String::new(),
         }
     }
 }
@@ -131,7 +134,14 @@ impl AppState {
     }
 
     pub fn gps_display(&self) -> String {
-        self.platform.gps.fix.as_display().to_string()
+        let gps = &self.platform.gps;
+        if gps.readiness == Readiness::NotPresent {
+            return "OFFLINE".into();
+        }
+        if gps.latitude.is_none() {
+            return "LINKED".into();
+        }
+        gps.fix.as_display().to_string()
     }
 
     pub fn mesh_display(&self) -> String {

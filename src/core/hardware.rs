@@ -39,6 +39,7 @@ pub struct PlatformStatus {
     pub mesh: MeshStatus,
     pub network: NetworkStatus,
     pub storage: StorageStatus,
+    pub attachments: Vec<Attachment>,
 }
 
 impl Default for PlatformStatus {
@@ -51,6 +52,7 @@ impl Default for PlatformStatus {
             mesh: MeshStatus::default(),
             network: NetworkStatus::default(),
             storage: StorageStatus::default(),
+            attachments: Vec::new(),
         }
     }
 }
@@ -125,6 +127,10 @@ pub struct GpsStatus {
     pub hdop: Option<f32>,
     /// Milliseconds since the last accepted NMEA sentence.
     pub age_ms: Option<u64>,
+    /// Serial path once a receiver is claimed, such as `/dev/ttyACM0`.
+    pub device: String,
+    /// USB product string for that port, when the host provides one.
+    pub label: String,
 }
 
 impl Default for GpsStatus {
@@ -140,6 +146,8 @@ impl Default for GpsStatus {
             course_deg: None,
             hdop: None,
             age_ms: None,
+            device: "—".into(),
+            label: "—".into(),
         }
     }
 }
@@ -208,6 +216,9 @@ pub struct MeshStatus {
     /// LoRa region reported by the radio. Live adapters leave this blank until a region is read.
     pub region: String,
     pub peers: Vec<MeshPeer>,
+    /// Serial path once a Meshtastic radio is claimed.
+    pub port: String,
+    pub label: String,
 }
 
 impl Default for MeshStatus {
@@ -219,8 +230,17 @@ impl Default for MeshStatus {
             last_rx: None,
             region: "—".into(),
             peers: Vec::new(),
+            port: "—".into(),
+            label: "—".into(),
         }
     }
+}
+
+/// One USB assignment the shell is willing to say out loud.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct Attachment {
+    pub panel: String,
+    pub text: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

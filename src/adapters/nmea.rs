@@ -44,6 +44,7 @@ pub fn apply_sentence(state: &mut NmeaState, line: &str) -> bool {
     match sentence_kind(fields[0]) {
         Some("GGA") => apply_gga(state, &fields),
         Some("RMC") => apply_rmc(state, &fields),
+        Some("GLL") => apply_gll(state, &fields),
         _ => false,
     }
 }
@@ -70,8 +71,32 @@ fn sentence_kind(talker: &str) -> Option<&'static str> {
     match kind {
         "GGA" => Some("GGA"),
         "RMC" => Some("RMC"),
+        "GLL" => Some("GLL"),
         _ => None,
     }
+}
+
+/// Pull complete lines out of a serial buffer. Receivers end a sentence with
+/// `\n`, `\r\n`, or a bare `\r`.
+pub fn split_lines(acc: &mut String) -> Vec<String> {
+    let mut lines = Vec::new();
+    while let Some(idx) = acc.find(['\n', '\r']) {
+        let mut line: String = acc.drain(..=idx).collect();
+        line.pop();
+        if line.ends_with('\r') || line.ends_with('\n') {
+            line.pop();
+        }
+        let line = line.trim().to_string();
+        if !line.is_empty() {
+            lines.push(line);
+        }
+    }
+    lines
+}
+
+pub fn has_fix_sentence(acc: &str) -> bool {
+    let upper = acc.to_ascii_uppercase();
+    upper.contains('$') && (upper.contains("GGA") || upper.contains("RMC") || upper.contains("GLL"))
 }
 
 fn apply_gga(state: &mut NmeaState, fields: &[&str]) -> bool {
@@ -97,6 +122,23 @@ fn apply_gga(state: &mut NmeaState, fields: &[&str]) -> bool {
         1 | 2 => GpsFix::Fix2D,
         _ => GpsFix::Fix3D,
     };
+    true
+}
+
+fn apply_gll(state: &mut NmeaState, fields: &[&str]) -> bool {
+    if fields.len() < 7 {
+        return false;
+    }
+    if fields[6] != "A" {
+        return true;
+    }
+    if let Some((lat, lon)) = position(fields[1], fields[2], fields[3], fields[4]) {
+        state.latitude = Some(lat);
+        state.longitude = Some(lon);
+    }
+    if state.fix == GpsFix::None {
+        state.fix = GpsFix::Fix2D;
+    }
     true
 }
 
@@ -190,6 +232,24 @@ mod tests {
         let speed = state.speed_kmh.unwrap();
         assert!((speed - 22.4 * 1.852).abs() < 1e-3, "{speed}");
         assert_eq!(state.course_deg, Some(84.4));
+    }
+
+    #[test]
+    fn cr_only_lines_split() {
+        let mut acc = "$GPGLL,4916.45,N,12311.12,W,225444,A,A*5C\r$GPGGA,123519,4807.038,N,01131.000,E,1,08,0.9,545.4,M,46.9,M,,*47\r".into();
+        let lines = split_lines(&mut acc);
+        assert_eq!(lines.len(), 2);
+        assert!(acc.is_empty());
+    }
+
+    #[test]
+    fn gll_sets_a_position() {
+        let line = with_sum("GPGLL,4916.45,N,12311.12,W,225444,A,A");
+        let mut state = NmeaState::default();
+        assert!(apply_sentence(&mut state, &line));
+        assert!(state.latitude.unwrap() > 0.0);
+        assert!(state.longitude.unwrap() < 0.0);
+        assert_eq!(state.fix, GpsFix::Fix2D);
     }
 
     #[test]
