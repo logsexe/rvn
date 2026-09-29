@@ -118,6 +118,7 @@ export component SystemSurface inherits Rectangle {
     in property <string> power-source: "Unknown";
     in property <string> power-percent: "—";
     in property <string> power-voltage: "—";
+    in property <string> endurance: "—";
     in property <bool> throttled: false;
 
     in property <string> gps-port: "—";
@@ -215,6 +216,14 @@ export component SystemSurface inherits Rectangle {
                         label: "THROTTLE";
                         value: throttled ? "ACTIVE" : "NONE";
                         warn: throttled;
+                    }
+                    Metric { label: "MEASURED"; value: endurance; }
+                    if endurance == "—": Text {
+                        text: "Hours appear here after endurance.json records a measured pack and draw.";
+                        font-size: 11px;
+                        color: Theme.text-faint;
+                        font-family: Theme.font-sans;
+                        wrap: word-wrap;
                     }
                 }
 

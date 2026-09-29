@@ -4,6 +4,13 @@ use super::geo;
 use super::hardware::{PlatformStatus, Readiness};
 use serde::{Deserialize, Serialize};
 
+/// A named frequency the operator kept. Strength memory, not a demodulator.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Bookmark {
+    pub name: String,
+    pub mhz: f32,
+}
+
 /// Operator-dropped position.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Waypoint {
@@ -78,6 +85,9 @@ pub struct AppState {
     pub platform: PlatformStatus,
     pub clock: String,
     pub waypoints: Vec<Waypoint>,
+    pub selected_mark: String,
+    pub bookmarks: Vec<Bookmark>,
+    pub night: bool,
     pub tracking: bool,
     /// Walked path, oldest first. Capped so a long day does not grow without limit.
     pub track: Vec<(f64, f64)>,
@@ -96,6 +106,9 @@ impl Default for AppState {
             platform: PlatformStatus::default(),
             clock: "00:00:00".into(),
             waypoints: Vec::new(),
+            selected_mark: String::new(),
+            bookmarks: Vec::new(),
+            night: false,
             tracking: false,
             track: Vec::new(),
             track_points: 0,
@@ -234,6 +247,64 @@ impl AppState {
         true
     }
 
+    /// Select a waypoint to walk back to. Choosing it again clears the guide.
+    pub fn choose_mark(&mut self, id: &str) {
+        if self.selected_mark == id {
+            self.selected_mark.clear();
+            return;
+        }
+        if self.waypoints.iter().any(|wp| wp.id == id) {
+            self.selected_mark = id.to_string();
+        }
+    }
+
+    pub fn goal(&self) -> Option<(f64, f64)> {
+        self.waypoints
+            .iter()
+            .find(|wp| wp.id == self.selected_mark)
+            .map(|wp| (wp.lat, wp.lon))
+    }
+
+    /// Distance and bearing from the fix to the selected mark.
+    pub fn guide_text(&self) -> String {
+        let (Some(lat), Some(lon)) = (self.platform.gps.latitude, self.platform.gps.longitude)
+        else {
+            return String::new();
+        };
+        if self.platform.gps.readiness == Readiness::NotPresent {
+            return String::new();
+        }
+        let Some((mark_lat, mark_lon)) = self.goal() else {
+            return String::new();
+        };
+        let metres = geo::haversine_m(lat, lon, mark_lat, mark_lon);
+        let bearing = geo::bearing_deg(lat, lon, mark_lat, mark_lon);
+        format!(
+            "{}  {}  {:03.0}°",
+            self.selected_mark,
+            geo::range_text(metres),
+            bearing
+        )
+    }
+
+    pub fn keep_bookmark(&mut self, name: &str, mhz: f32) {
+        let mhz = mhz.clamp(24.0, 1700.0);
+        let name: String = {
+            let trimmed = name.trim();
+            if trimmed.is_empty() {
+                format!("{mhz:.3}")
+            } else {
+                trimmed.chars().take(16).collect()
+            }
+        };
+        self.bookmarks.retain(|mark| (mark.mhz - mhz).abs() > 0.005);
+        self.bookmarks.push(Bookmark { name, mhz });
+        if self.bookmarks.len() > 16 {
+            let extra = self.bookmarks.len() - 16;
+            self.bookmarks.drain(0..extra);
+        }
+    }
+
     pub fn toggle_track(&mut self) {
         self.tracking = !self.tracking;
         if self.tracking {
@@ -332,6 +403,19 @@ mod tests {
         assert_eq!(state.waypoints[0].id, "WP-01");
         assert_eq!(state.waypoints[1].id, "WP-02");
         assert_eq!(state.nav_notice, "MARKED WP-02");
+        state.choose_mark("WP-01");
+        assert!(state.guide_text().starts_with("WP-01"));
+        state.choose_mark("WP-01");
+        assert!(state.guide_text().is_empty());
+    }
+
+    #[test]
+    fn bookmark_replaces_the_same_frequency() {
+        let mut state = AppState::default();
+        state.keep_bookmark("camp", 433.5);
+        state.keep_bookmark("ridge", 433.5);
+        assert_eq!(state.bookmarks.len(), 1);
+        assert_eq!(state.bookmarks[0].name, "ridge");
     }
 
     #[test]

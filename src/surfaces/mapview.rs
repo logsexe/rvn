@@ -43,6 +43,8 @@ pub struct MapView {
     missing: usize,
     track: Vec<(f64, f64)>,
     marks: Vec<(f64, f64)>,
+    goal: Option<(f64, f64)>,
+    stations: Vec<(String, f64, f64)>,
 }
 
 impl MapView {
@@ -57,7 +59,7 @@ impl MapView {
     fn create(online: bool) -> Self {
         let cache = cache_dir();
         let tx = if online {
-            let (tx, rx) = mpsc::sync_channel(24);
+            let (tx, rx) = mpsc::sync_channel(80);
             let dir = cache.clone();
             if std::thread::Builder::new()
                 .name("rvn-map".into())
@@ -89,6 +91,8 @@ impl MapView {
             missing: 0,
             track: Vec::new(),
             marks: Vec::new(),
+            goal: None,
+            stations: Vec::new(),
         }
     }
 
@@ -102,6 +106,77 @@ impl MapView {
         self.marks.clear();
         self.marks.extend_from_slice(marks);
         self.dirty = true;
+    }
+
+    pub fn set_goal(&mut self, goal: Option<(f64, f64)>) {
+        if self.goal == goal {
+            return;
+        }
+        self.goal = goal;
+        self.dirty = true;
+    }
+
+    pub fn set_stations(&mut self, stations: &[(String, f64, f64)]) {
+        if self.stations == stations {
+            return;
+        }
+        self.stations.clear();
+        self.stations.extend_from_slice(stations);
+        self.dirty = true;
+    }
+
+    pub fn camera(&self) -> (f64, f64, f64, bool) {
+        (self.lat, self.lon, self.zoom, self.follow)
+    }
+
+    /// A saved view. The first live fix recenters when follow is on, and does not replay the continent hone.
+    pub fn restore(&mut self, lat: f64, lon: f64, zoom: f64, follow: bool) {
+        self.lat = lat.clamp(-85.0, 85.0);
+        self.lon = wrap_lon(lon);
+        self.zoom = zoom.clamp(2.0, 16.0);
+        self.follow = follow;
+        // A close or parked view stays put. The wide default still hones onto the first fix.
+        self.had_fix = self.zoom >= 8.0 || !self.follow;
+        self.hone = None;
+        self.dirty = true;
+    }
+
+    /// Street tiles around a point. Zoom 15, two tiles each way: 25 tiles, never more than 64.
+    pub fn area_plan(lat: f64, lon: f64) -> Vec<(u8, u32, u32)> {
+        const Z: u8 = 15;
+        let n = 1i32 << Z;
+        let cx = world_x(wrap_lon(lon), f64::from(Z)).floor() as i32;
+        let cy = world_y(lat.clamp(-85.0, 85.0), f64::from(Z)).floor() as i32;
+        let mut out = Vec::new();
+        for dy in -2..=2 {
+            for dx in -2..=2 {
+                let y = cy + dy;
+                if y < 0 || y >= n {
+                    continue;
+                }
+                out.push((Z, (cx + dx).rem_euclid(n) as u32, y as u32));
+                if out.len() >= 64 {
+                    return out;
+                }
+            }
+        }
+        out
+    }
+
+    /// Queue that area through the paced fetcher. Returns tiles newly queued, then tiles already stored.
+    pub fn save_area(&mut self, lat: f64, lon: f64) -> (usize, usize) {
+        let mut queued = 0usize;
+        let mut have = 0usize;
+        for (z, x, y) in Self::area_plan(lat, lon) {
+            let key = (z, x, y);
+            if self.tiles.contains_key(&key) || tile_path(&self.cache, z, x, y).exists() {
+                have += 1;
+            }
+            if self.consider(z, x, y) {
+                queued += 1;
+            }
+        }
+        (queued, have)
     }
 
     pub fn set_viewport(&mut self, width: f32, height: f32) {
@@ -261,6 +336,20 @@ impl MapView {
             self.lon,
             &self.track,
         );
+        if let (Some((flat, flon)), Some((glat, glon))) = (self.fix, self.goal) {
+            let (x1, y1) = project(flat, flon, self.zoom, self.lat, self.lon, width, height);
+            let (x2, y2) = project(glat, glon, self.zoom, self.lat, self.lon, width, height);
+            draw_line(&mut rgba, width, height, x1, y1, x2, y2, 251, 191, 36);
+        }
+        for (name, lat, lon) in &self.stations {
+            let (x, y) = project(*lat, *lon, self.zoom, self.lat, self.lon, width, height);
+            if x < -48.0 || y < -16.0 || x >= f64::from(width) + 8.0 || y >= f64::from(height) + 16.0
+            {
+                continue;
+            }
+            paint_dot(&mut rgba, width, height, x, y, 4, 56, 189, 248);
+            draw_label(&mut rgba, width, height, x + 8.0, y - 3.0, name);
+        }
         for (lat, lon) in &self.marks {
             let (x, y) = project(*lat, *lon, self.zoom, self.lat, self.lon, width, height);
             if x < -8.0 || y < -8.0 || x >= f64::from(width) + 8.0 || y >= f64::from(height) + 8.0 {
@@ -569,6 +658,78 @@ fn draw_line(rgba: &mut [u8], width: u32, height: u32, x0: f64, y0: f64, x1: f64
     }
 }
 
+fn glyph_rows(ch: u8) -> Option<[u8; 7]> {
+    Some(match ch {
+        b'A' => [0x0E, 0x11, 0x11, 0x1F, 0x11, 0x11, 0x11],
+        b'B' => [0x1E, 0x11, 0x11, 0x1E, 0x11, 0x11, 0x1E],
+        b'C' => [0x0E, 0x11, 0x10, 0x10, 0x10, 0x11, 0x0E],
+        b'D' => [0x1E, 0x11, 0x11, 0x11, 0x11, 0x11, 0x1E],
+        b'E' => [0x1F, 0x10, 0x10, 0x1E, 0x10, 0x10, 0x1F],
+        b'F' => [0x1F, 0x10, 0x10, 0x1E, 0x10, 0x10, 0x10],
+        b'G' => [0x0E, 0x11, 0x10, 0x17, 0x11, 0x11, 0x0F],
+        b'H' => [0x11, 0x11, 0x11, 0x1F, 0x11, 0x11, 0x11],
+        b'I' => [0x0E, 0x04, 0x04, 0x04, 0x04, 0x04, 0x0E],
+        b'J' => [0x07, 0x02, 0x02, 0x02, 0x02, 0x12, 0x0C],
+        b'K' => [0x11, 0x12, 0x14, 0x18, 0x14, 0x12, 0x11],
+        b'L' => [0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x1F],
+        b'M' => [0x11, 0x1B, 0x15, 0x15, 0x11, 0x11, 0x11],
+        b'N' => [0x11, 0x19, 0x15, 0x13, 0x11, 0x11, 0x11],
+        b'O' => [0x0E, 0x11, 0x11, 0x11, 0x11, 0x11, 0x0E],
+        b'P' => [0x1E, 0x11, 0x11, 0x1E, 0x10, 0x10, 0x10],
+        b'Q' => [0x0E, 0x11, 0x11, 0x11, 0x15, 0x12, 0x0D],
+        b'R' => [0x1E, 0x11, 0x11, 0x1E, 0x14, 0x12, 0x11],
+        b'S' => [0x0E, 0x11, 0x10, 0x0E, 0x01, 0x11, 0x0E],
+        b'T' => [0x1F, 0x04, 0x04, 0x04, 0x04, 0x04, 0x04],
+        b'U' => [0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x0E],
+        b'V' => [0x11, 0x11, 0x11, 0x11, 0x11, 0x0A, 0x04],
+        b'W' => [0x11, 0x11, 0x11, 0x15, 0x15, 0x1B, 0x11],
+        b'X' => [0x11, 0x11, 0x0A, 0x04, 0x0A, 0x11, 0x11],
+        b'Y' => [0x11, 0x11, 0x0A, 0x04, 0x04, 0x04, 0x04],
+        b'Z' => [0x1F, 0x01, 0x02, 0x04, 0x08, 0x10, 0x1F],
+        b'0' => [0x0E, 0x11, 0x13, 0x15, 0x19, 0x11, 0x0E],
+        b'1' => [0x04, 0x0C, 0x04, 0x04, 0x04, 0x04, 0x0E],
+        b'2' => [0x0E, 0x11, 0x01, 0x06, 0x08, 0x10, 0x1F],
+        b'3' => [0x0E, 0x11, 0x01, 0x06, 0x01, 0x11, 0x0E],
+        b'4' => [0x02, 0x06, 0x0A, 0x12, 0x1F, 0x02, 0x02],
+        b'5' => [0x1F, 0x10, 0x1E, 0x01, 0x01, 0x11, 0x0E],
+        b'6' => [0x06, 0x08, 0x10, 0x1E, 0x11, 0x11, 0x0E],
+        b'7' => [0x1F, 0x01, 0x02, 0x04, 0x08, 0x08, 0x08],
+        b'8' => [0x0E, 0x11, 0x11, 0x0E, 0x11, 0x11, 0x0E],
+        b'9' => [0x0E, 0x11, 0x11, 0x0F, 0x01, 0x02, 0x0C],
+        _ => return None,
+    })
+}
+
+fn draw_label(rgba: &mut [u8], width: u32, height: u32, x: f64, y: f64, text: &str) {
+    let mut cursor = x.round() as i32;
+    let top = y.round() as i32;
+    let w = width as i32;
+    let h = height as i32;
+    for ch in text.chars().take(4) {
+        let Some(rows) = glyph_rows(ch.to_ascii_uppercase() as u8) else {
+            continue;
+        };
+        for (row, bits) in rows.iter().enumerate() {
+            for col in 0..5 {
+                if bits & (1 << (4 - col)) == 0 {
+                    continue;
+                }
+                let px = cursor + col;
+                let py = top + row as i32;
+                if px < 0 || py < 0 || px >= w || py >= h {
+                    continue;
+                }
+                let i = (py as usize * width as usize + px as usize) * 4;
+                rgba[i] = 186;
+                rgba[i + 1] = 230;
+                rgba[i + 2] = 253;
+                rgba[i + 3] = 255;
+            }
+        }
+        cursor += 6;
+    }
+}
+
 fn paint_dot(rgba: &mut [u8], width: u32, height: u32, cx: f64, cy: f64, radius: i32, r: u8, g: u8, b: u8) {
     let w = width as i32;
     let h = height as i32;
@@ -764,5 +925,58 @@ mod tests {
         let y = frame.height / 2;
         let i = (y * frame.width + x) as usize * 4;
         assert!(frame.rgba[i + 1] > 180, "g {}", frame.rgba[i + 1]);
+    }
+
+    #[test]
+    fn area_plan_is_twenty_five_street_tiles() {
+        let tiles = MapView::area_plan(-27.47, 153.02);
+        assert_eq!(tiles.len(), 25);
+        assert!(tiles.iter().all(|tile| tile.0 == 15));
+    }
+
+    #[test]
+    fn goal_line_crosses_beside_the_fix() {
+        let mut map = MapView::offline();
+        map.set_viewport(200.0, 120.0);
+        map.follow = false;
+        map.note_fix(-27.47, 153.02);
+        map.hone = None;
+        map.lat = -27.47;
+        map.lon = 153.02;
+        map.zoom = 8.0;
+        map.set_goal(Some((-27.47, 154.5)));
+        let frame = map.render().expect("frame");
+        let x = frame.width / 2 + 18;
+        let y = frame.height / 2;
+        let i = (y * frame.width + x) as usize * 4;
+        assert!(frame.rgba[i] > 200, "r {}", frame.rgba[i]);
+    }
+
+    #[test]
+    fn station_sits_on_its_fix() {
+        let mut map = MapView::offline();
+        map.set_viewport(200.0, 120.0);
+        map.lat = -27.47;
+        map.lon = 153.02;
+        map.zoom = 10.0;
+        map.follow = false;
+        map.hone = None;
+        map.set_stations(&[("CAMP".into(), -27.47, 153.02)]);
+        let frame = map.render().expect("frame");
+        let x = frame.width / 2;
+        let y = frame.height / 2;
+        let i = (y * frame.width + x) as usize * 4;
+        assert!(frame.rgba[i + 2] > 200, "b {}", frame.rgba[i + 2]);
+    }
+
+    #[test]
+    fn restore_does_not_replay_the_hone() {
+        let mut map = MapView::offline();
+        map.restore(-27.47, 153.02, 15.0, true);
+        map.note_fix(-27.48, 153.03);
+        assert!(map.hone.is_none());
+        assert!((map.zoom - 15.0).abs() < 0.01);
+        let (queued, _) = map.save_area(-27.47, 153.02);
+        assert_eq!(queued, 0);
     }
 }

@@ -1,6 +1,6 @@
 import { Theme } from "theme.slint";
 import { StatusDot } from "components.slint";
-import { BandChoice, BandNote, ScanHit } from "models.slint";
+import { BandChoice, BandNote, BookmarkRow, ScanHit } from "models.slint";
 
 // RADIO — receive-only SDR instrument
 
@@ -255,6 +255,7 @@ component BandButton inherits Rectangle {
 component HitRow inherits Rectangle {
     in property <string> freq: "";
     in property <float> level: 0;
+    callback keep();
 
     height: 28px;
 
@@ -285,6 +286,34 @@ component HitRow inherits Rectangle {
                 background: root.level > 0.72 ? Theme.warn : Theme.accent;
             }
         }
+
+        Rectangle {
+            width: 44px;
+            height: 22px;
+            border-radius: 4px;
+            border-width: 1px;
+            border-color: Theme.border;
+            background: Theme.bg-elevated;
+
+            Text {
+                text: "KEEP";
+                width: 100%;
+                height: 100%;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+                font-size: 10px;
+                font-weight: 700;
+                color: Theme.accent;
+                font-family: Theme.font-mono;
+            }
+
+            TouchArea {
+                width: 100%;
+                height: 100%;
+                clicked => { root.keep(); }
+                mouse-cursor: pointer;
+            }
+        }
     }
 }
 
@@ -305,12 +334,16 @@ export component RadioSurface inherits Rectangle {
     in property <[ScanHit]> hits;
     in property <[BandChoice]> bands;
     in property <[BandNote]> notes;
+    in property <[BookmarkRow]> bookmarks;
+    in property <image> waterfall;
+    in-out property <string> mark-name: "";
 
     callback close;
     callback tune(float);
     callback toggle-stream;
     callback scan(string);
     callback scan-stop;
+    callback keep(float, string);
 
     property <int> page: 0;
     property <string> band-id: "survey";
@@ -443,6 +476,13 @@ export component RadioSurface inherits Rectangle {
                     }
                 }
 
+                if !scanning: Image {
+                    source: waterfall;
+                    width: 100%;
+                    height: 48px;
+                    image-fit: fill;
+                }
+
                 Rectangle {
                     border-radius: Theme.radius-md;
                     border-width: 1px;
@@ -497,6 +537,76 @@ export component RadioSurface inherits Rectangle {
                             font-family: Theme.font-sans;
                             horizontal-alignment: center;
                             wrap: word-wrap;
+                        }
+                    }
+                }
+
+                HorizontalLayout {
+                    spacing: 8px;
+                    alignment: center;
+
+                    Rectangle {
+                        horizontal-stretch: 1;
+                        height: 32px;
+                        border-radius: Theme.radius-sm;
+                        border-width: 1px;
+                        border-color: Theme.border;
+                        background: Theme.bg-elevated;
+
+                        TextInput {
+                            x: 8px;
+                            width: parent.width - 16px;
+                            height: 100%;
+                            text <=> root.mark-name;
+                            font-size: 12px;
+                            color: Theme.text-primary;
+                            font-family: Theme.font-mono;
+                            vertical-alignment: center;
+                        }
+                    }
+
+                    ActionButton {
+                        label: "KEEP";
+                        enabled: live-ok;
+                        clicked => { root.keep(root.mhz, root.mark-name); }
+                    }
+                }
+
+                if bookmarks.length > 0: Flickable {
+                    height: 28px;
+                    content-height: 28px;
+                    content-width: marks.preferred-width;
+
+                    marks := HorizontalLayout {
+                        spacing: 6px;
+
+                        for mark in bookmarks: Rectangle {
+                            height: 28px;
+                            border-radius: Theme.radius-sm;
+                            border-width: 1px;
+                            border-color: Theme.border;
+                            background: Theme.bg-elevated;
+
+                            HorizontalLayout {
+                                padding-left: 8px;
+                                padding-right: 8px;
+                                alignment: center;
+
+                                Text {
+                                    text: mark.name;
+                                    font-size: 11px;
+                                    color: Theme.accent;
+                                    font-family: Theme.font-mono;
+                                    vertical-alignment: center;
+                                }
+                            }
+
+                            TouchArea {
+                                width: 100%;
+                                height: 100%;
+                                clicked => { root.tune(mark.mhz); }
+                                mouse-cursor: pointer;
+                            }
                         }
                     }
                 }
@@ -673,6 +783,7 @@ export component RadioSurface inherits Rectangle {
                         for hit in hits: HitRow {
                             freq: hit.freq;
                             level: hit.level;
+                            keep => { root.keep(hit.mhz, root.mark-name); }
                         }
                     }
                 }

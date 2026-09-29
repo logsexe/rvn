@@ -10,7 +10,7 @@ import { NavSurface } from "nav.slint";
 import { RadioSurface } from "radio.slint";
 import { MeshSurface } from "mesh.slint";
 import { TerminalSurface } from "terminal.slint";
-import { WaypointRow, MeshLine, MeshNode, LinkRow, ScanHit, BandChoice, BandNote } from "models.slint";
+import { WaypointRow, MeshLine, MeshNode, LinkRow, ScanHit, BandChoice, BandNote, BookmarkRow } from "models.slint";
 
 export component AppWindow inherits Window {
     title: "RVN";
@@ -22,6 +22,8 @@ export component AppWindow inherits Window {
     default-font-family: Theme.font-sans;
 
     in-out property <int> active-surface: -1;
+    in-out property <bool> night: false;
+    in-out property <string> home-notice: "";
 
     // Top bar
     in-out property <string> current-time: "00:00:00";
@@ -47,6 +49,7 @@ export component AppWindow inherits Window {
     in-out property <string> sys-power-source: "Unknown";
     in-out property <string> sys-power-percent: "—";
     in-out property <string> sys-power-voltage: "—";
+    in-out property <string> sys-endurance: "—";
     in-out property <bool> sys-throttled: false;
     in-out property <string> sys-gps-readiness: "offline";
     in-out property <string> sys-gps-port: "—";
@@ -81,6 +84,7 @@ export component AppWindow inherits Window {
     in-out property <bool> nav-tracking: false;
     in-out property <int> nav-track-count: 0;
     in-out property <string> nav-notice: "";
+    in-out property <string> nav-guide: "";
     in-out property <[WaypointRow]> nav-waypoints;
     in-out property <image> nav-map;
     in-out property <string> nav-map-caption: "Waiting for a sky fix";
@@ -102,6 +106,9 @@ export component AppWindow inherits Window {
     in-out property <[ScanHit]> radio-hits;
     in-out property <[BandChoice]> radio-bands;
     in-out property <[BandNote]> radio-notes;
+    in-out property <[BookmarkRow]> radio-bookmarks;
+    in-out property <image> radio-waterfall;
+    in-out property <string> radio-mark-name: "";
 
     // MESH
     in-out property <string> mesh-readiness: "offline";
@@ -135,8 +142,16 @@ export component AppWindow inherits Window {
     callback nav-map-zoom(int);
     callback nav-map-recenter();
     callback nav-map-resized(float, float);
+    callback nav-choose(string);
+    callback nav-save-area();
+    callback radio-keep(float, string);
+    callback night-toggled(bool);
     callback term-submit(string);
     callback term-clear();
+
+    changed night => {
+        Theme.night = night;
+    }
 
     changed active-surface => {
         if (active-surface == -1) {
@@ -174,6 +189,11 @@ export component AppWindow inherits Window {
             if (event.text == "3") { active-surface = 2; surface-selected(2); return accept; }
             if (event.text == "4") { active-surface = 3; surface-selected(3); return accept; }
             if (event.text == "5") { active-surface = 4; surface-selected(4); return accept; }
+            if (event.text == "n" || event.text == "N") {
+                night = !night;
+                night-toggled(night);
+                return accept;
+            }
             return reject;
         }
 
@@ -287,20 +307,58 @@ export component AppWindow inherits Window {
                                 }
 
                                 Text {
-                                    text: "Five instruments share this shell. A missing module leaves its own tile quiet.";
+                                    text: home-notice != "" ? home-notice : "Five instruments share this shell. A missing module leaves its own tile quiet.";
                                     font-size: 14px;
-                                    color: Theme.text-muted;
+                                    color: home-notice != "" ? Theme.warn : Theme.text-muted;
                                     font-family: Theme.font-sans;
                                     wrap: word-wrap;
                                 }
 
                                 Rectangle { vertical-stretch: 1; }
 
-                                Text {
-                                    text: "Listening first. Transmit when armed.";
-                                    font-size: 12px;
-                                    color: Theme.accent-dim;
-                                    font-family: Theme.font-sans;
+                                HorizontalLayout {
+                                    spacing: 8px;
+                                    alignment: center;
+
+                                    Text {
+                                        text: "Listening first. Transmit when armed.";
+                                        font-size: 12px;
+                                        color: Theme.accent-dim;
+                                        font-family: Theme.font-sans;
+                                        vertical-alignment: center;
+                                        horizontal-stretch: 1;
+                                    }
+
+                                    Rectangle {
+                                        width: 64px;
+                                        height: 28px;
+                                        border-radius: Theme.radius-sm;
+                                        border-width: 1px;
+                                        border-color: Theme.border;
+                                        background: Theme.bg-elevated;
+
+                                        Text {
+                                            text: night ? "DAY" : "NIGHT";
+                                            width: 100%;
+                                            height: 100%;
+                                            font-size: 11px;
+                                            font-weight: 700;
+                                            color: Theme.text-secondary;
+                                            font-family: Theme.font-mono;
+                                            horizontal-alignment: center;
+                                            vertical-alignment: center;
+                                        }
+
+                                        TouchArea {
+                                            width: 100%;
+                                            height: 100%;
+                                            clicked => {
+                                                night = !night;
+                                                night-toggled(night);
+                                            }
+                                            mouse-cursor: pointer;
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -331,11 +389,14 @@ export component AppWindow inherits Window {
                 tracking: nav-tracking;
                 track-count: nav-track-count;
                 notice: nav-notice;
+                guide: nav-guide;
                 waypoints: nav-waypoints;
                 close => { active-surface = -1; go-home(); }
                 mark-waypoint => { nav-mark(); }
                 toggle-track => { nav-toggle-track(); }
                 copy-coords => { nav-copy(); }
+                choose(id) => { nav-choose(id); }
+                save-area => { nav-save-area(); }
             }
 
             if active-surface == 1: RadioSurface {
@@ -354,11 +415,15 @@ export component AppWindow inherits Window {
                 hits: radio-hits;
                 bands: radio-bands;
                 notes: radio-notes;
+                bookmarks: radio-bookmarks;
+                waterfall: radio-waterfall;
+                mark-name <=> radio-mark-name;
                 close => { active-surface = -1; go-home(); }
                 tune(mhz) => { radio-tune(mhz); }
                 toggle-stream => { radio-toggle-stream(); }
                 scan(id) => { radio-scan(id); }
                 scan-stop => { radio-scan-stop(); }
+                keep(mhz, name) => { radio-keep(mhz, name); }
             }
 
             if active-surface == 2: MeshSurface {
@@ -396,6 +461,7 @@ export component AppWindow inherits Window {
                 power-source: sys-power-source;
                 power-percent: sys-power-percent;
                 power-voltage: sys-power-voltage;
+                endurance: sys-endurance;
                 throttled: sys-throttled;
                 gps-port: sys-gps-port;
                 gps-readiness: sys-gps-readiness;

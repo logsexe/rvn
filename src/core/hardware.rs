@@ -215,6 +215,14 @@ impl Default for RadioStatus {
     }
 }
 
+/// A station that announced a position. Drawn on the NAV map.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MeshFix {
+    pub name: String,
+    pub lat: f64,
+    pub lon: f64,
+}
+
 /// One row in the MESH node list.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MeshPeer {
@@ -232,6 +240,7 @@ pub struct MeshStatus {
     /// LoRa region reported by the radio. Live adapters leave this blank until a region is read.
     pub region: String,
     pub peers: Vec<MeshPeer>,
+    pub fixes: Vec<MeshFix>,
     /// Serial path once a Meshtastic radio is claimed.
     pub port: String,
     pub label: String,
@@ -246,6 +255,7 @@ impl Default for MeshStatus {
             last_rx: None,
             region: "—".into(),
             peers: Vec::new(),
+            fixes: Vec::new(),
             port: "—".into(),
             label: "—".into(),
         }

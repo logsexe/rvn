@@ -76,8 +76,14 @@ component WaypointLine inherits Rectangle {
     in property <string> name: "";
     in property <string> coords: "";
     in property <string> marked: "";
+    in property <bool> selected: false;
+    callback choose();
 
     height: 36px;
+    border-radius: 6px;
+    border-width: selected ? 1px : 0px;
+    border-color: Theme.warn;
+    background: selected ? Theme.accent-muted : transparent;
 
     VerticalLayout {
         alignment: center;
@@ -110,6 +116,13 @@ component WaypointLine inherits Rectangle {
             color: Theme.text-primary;
             font-family: Theme.font-mono;
         }
+    }
+
+    TouchArea {
+        width: 100%;
+        height: 100%;
+        clicked => { root.choose(); }
+        mouse-cursor: pointer;
     }
 }
 
@@ -253,6 +266,7 @@ export component NavSurface inherits Rectangle {
     in property <bool> tracking: false;
     in property <int> track-count: 0;
     in property <string> notice: "";
+    in property <string> guide: "";
     in property <[WaypointRow]> waypoints;
     in property <image> map-image;
     in property <string> map-caption: "";
@@ -266,6 +280,8 @@ export component NavSurface inherits Rectangle {
     callback map-zoom(int);
     callback map-recenter();
     callback map-resized(float, float);
+    callback choose(string);
+    callback save-area();
 
     property <bool> drag-on: false;
     property <length> drag-x: 0px;
@@ -387,7 +403,7 @@ export component NavSurface inherits Rectangle {
                     x: parent.width - 48px;
                     y: 12px;
                     width: 36px;
-                    height: 120px;
+                    height: 162px;
                     spacing: 6px;
 
                     MapButton { label: "+"; clicked => { root.map-zoom(1); } }
@@ -397,6 +413,7 @@ export component NavSurface inherits Rectangle {
                         on: map-following;
                         clicked => { root.map-recenter(); }
                     }
+                    MapButton { label: "S"; clicked => { root.save-area(); } }
                 }
             }
 
@@ -469,8 +486,17 @@ export component NavSurface inherits Rectangle {
                     }
                 }
 
+                if guide != "": Text {
+                    text: guide;
+                    font-size: 13px;
+                    font-weight: 600;
+                    color: Theme.warn;
+                    font-family: Theme.font-mono;
+                    wrap: word-wrap;
+                }
+
                 Text {
-                    text: notice != "" ? notice : (tracking ? "TRACKING · " + track-count + " PTS" : "Drag the map. Marks and the track draw on it.");
+                    text: notice != "" ? notice : (tracking ? "TRACKING · " + track-count + " PTS" : "Drag the map. S saves the roads around the fix.");
                     font-size: 11px;
                     color: notice != "" || tracking ? Theme.accent : Theme.text-faint;
                     font-family: Theme.font-sans;
@@ -510,6 +536,8 @@ export component NavSurface inherits Rectangle {
                                 name: wp.name;
                                 coords: wp.coords;
                                 marked: wp.marked;
+                                selected: wp.selected;
+                                choose => { root.choose(wp.name); }
                             }
                         }
                     }

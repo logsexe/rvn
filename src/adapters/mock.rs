@@ -223,6 +223,11 @@ impl Platform for MockAdapter {
                 }),
                 region: "AU915".into(),
                 peers,
+                fixes: vec![crate::core::hardware::MeshFix {
+                    name: "CAMP".into(),
+                    lat: -27.475,
+                    lon: 153.03,
+                }],
                 port: "/dev/ttyUSB0".into(),
                 label: "simulated mesh".into(),
             };

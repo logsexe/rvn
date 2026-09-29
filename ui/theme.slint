@@ -1,23 +1,25 @@
 // RVN Design System — quiet instrument, one accent, real type.
 
 export global Theme {
-    // Backgrounds — layered, not flat black
-    out property <color> bg-void: #080a0e;
-    out property <color> bg-base: #10151c;
-    out property <color> bg-panel: #161d27;
-    out property <color> bg-elevated: #1c2532;
-    out property <color> bg-hover: #222c3b;
+    in-out property <bool> night: false;
+
+    // Backgrounds — layered, not flat black. Night keeps the same layout in dim red.
+    out property <color> bg-void: night ? #120606 : #080a0e;
+    out property <color> bg-base: night ? #1a0c0c : #10151c;
+    out property <color> bg-panel: night ? #241212 : #161d27;
+    out property <color> bg-elevated: night ? #2c1616 : #1c2532;
+    out property <color> bg-hover: night ? #3a1c1c : #222c3b;
 
     // Borders
-    out property <color> border: #243041;
-    out property <color> border-strong: #334155;
-    out property <color> border-accent: #5eead4;
+    out property <color> border: night ? #4a2424 : #243041;
+    out property <color> border-strong: night ? #6a3030 : #334155;
+    out property <color> border-accent: night ? #e08080 : #5eead4;
 
-    // Accent — teal, used as a hairline rather than a flood
-    out property <color> accent: #5eead4;
-    out property <color> accent-dim: #2dd4bf;
-    out property <color> accent-muted: #5eead422;
-    out property <color> accent-glow: #5eead428;
+    // Accent — teal by day, dim red at night
+    out property <color> accent: night ? #f0a0a0 : #5eead4;
+    out property <color> accent-dim: night ? #c45c5c : #2dd4bf;
+    out property <color> accent-muted: night ? #c45c5c33 : #5eead422;
+    out property <color> accent-glow: night ? #e0808028 : #5eead428;
 
     // Semantic
     out property <color> warn: #fbbf24;
@@ -26,17 +28,17 @@ export global Theme {
     out property <color> info: #38bdf8;
 
     // Text
-    out property <color> text-primary: #f1f5f9;
-    out property <color> text-secondary: #94a3b8;
-    out property <color> text-muted: #64748b;
-    out property <color> text-faint: #475569;
+    out property <color> text-primary: night ? #f3d6d6 : #f1f5f9;
+    out property <color> text-secondary: night ? #c09090 : #94a3b8;
+    out property <color> text-muted: night ? #8a6060 : #64748b;
+    out property <color> text-faint: night ? #6a4848 : #475569;
 
     // Status mapping
     out property <color> status-ok: #4ade80;
     out property <color> status-warn: #fbbf24;
     out property <color> status-error: #f87171;
-    out property <color> status-offline: #334155;
-    out property <color> status-active: #2dd4bf;
+    out property <color> status-offline: night ? #4a2424 : #334155;
+    out property <color> status-active: night ? #e08080 : #2dd4bf;
 
     // Type — bundled in ui/fonts
     out property <string> font-mono: "JetBrains Mono";

@@ -23,6 +23,8 @@ use super::MeshInbound;
 struct Heard {
     id: String,
     short_name: String,
+    lat: Option<f64>,
+    lon: Option<f64>,
 }
 
 struct MeshInner {
@@ -52,6 +54,7 @@ impl MeshInner {
 
     fn publish(&mut self) {
         let peers = peer_list(self.my_node, &self.nodes);
+        self.status.fixes = mesh_fixes(self.my_node, &self.nodes);
         self.status.peers = peers;
         self.status.nodes_heard = self.status.peers.len() as u32;
         self.status.node_id = self
@@ -331,12 +334,16 @@ fn apply_payload(slot: &Mutex<MeshInner>, payload: &[u8], nonce: u32) {
             inner.nodes.entry(num).or_insert_with(|| Heard {
                 id: node_label(num),
                 short_name: String::new(),
+                lat: None,
+                lon: None,
             });
         }
         RadioMessage::Node {
             num,
             id,
             short_name,
+            lat,
+            lon,
             ..
         } => {
             let label = if id.starts_with('!') && !id.is_empty() {
@@ -344,13 +351,20 @@ fn apply_payload(slot: &Mutex<MeshInner>, payload: &[u8], nonce: u32) {
             } else {
                 node_label(num)
             };
-            inner.nodes.insert(
-                num,
-                Heard {
-                    id: label,
-                    short_name,
-                },
-            );
+            let entry = inner.nodes.entry(num).or_insert_with(|| Heard {
+                id: label.clone(),
+                short_name: String::new(),
+                lat: None,
+                lon: None,
+            });
+            entry.id = label;
+            if !short_name.is_empty() {
+                entry.short_name = short_name;
+            }
+            if let (Some(lat), Some(lon)) = (lat, lon) {
+                entry.lat = Some(lat);
+                entry.lon = Some(lon);
+            }
         }
         RadioMessage::ConfigComplete(id) if id == nonce => {
             inner.configured = true;
@@ -380,6 +394,20 @@ fn apply_payload(slot: &Mutex<MeshInner>, payload: &[u8], nonce: u32) {
                 inner.inbox.pop_front();
             }
             inner.last_rx = Some(Instant::now());
+        }
+        RadioMessage::Position { from, lat, lon } => {
+            if inner.my_node == Some(from) {
+                inner.publish();
+                return;
+            }
+            let entry = inner.nodes.entry(from).or_insert_with(|| Heard {
+                id: node_label(from),
+                short_name: String::new(),
+                lat: None,
+                lon: None,
+            });
+            entry.lat = Some(lat);
+            entry.lon = Some(lon);
         }
     }
     inner.publish();
@@ -414,6 +442,26 @@ fn peer_list(my_node: Option<u32>, nodes: &HashMap<u32, Heard>) -> Vec<MeshPeer>
         });
     }
     peers
+}
+
+fn mesh_fixes(my_node: Option<u32>, nodes: &HashMap<u32, Heard>) -> Vec<crate::core::hardware::MeshFix> {
+    let mut fixes = Vec::new();
+    for (num, heard) in nodes {
+        if Some(*num) == my_node {
+            continue;
+        }
+        let (Some(lat), Some(lon)) = (heard.lat, heard.lon) else {
+            continue;
+        };
+        let name = if heard.short_name.is_empty() {
+            heard.id.chars().take(4).collect()
+        } else {
+            heard.short_name.chars().take(4).collect()
+        };
+        fixes.push(crate::core::hardware::MeshFix { name, lat, lon });
+    }
+    fixes.sort_by(|a, b| a.name.cmp(&b.name));
+    fixes
 }
 
 fn node_label(num: u32) -> String {

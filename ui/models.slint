@@ -4,6 +4,7 @@ export struct WaypointRow {
     name: string,
     coords: string,
     marked: string,
+    selected: bool,
 }
 
 export struct MeshLine {
@@ -26,6 +27,12 @@ export struct LinkRow {
 export struct ScanHit {
     freq: string,
     level: float,
+    mhz: float,
+}
+
+export struct BookmarkRow {
+    name: string,
+    mhz: float,
 }
 
 export struct BandChoice {

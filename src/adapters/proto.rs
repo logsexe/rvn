@@ -5,6 +5,7 @@
 use std::collections::VecDeque;
 
 pub const TEXT_MESSAGE_APP: u32 = 1;
+pub const POSITION_APP: u32 = 3;
 pub const BROADCAST: u32 = 0xFFFF_FFFF;
 const MAX_FRAME: usize = 1024;
 
@@ -50,7 +51,7 @@ pub fn encode_text_packet(from: u32, packet_id: u32, text: &str) -> Vec<u8> {
     msg
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum RadioMessage {
     MyNode(u32),
     Node {
@@ -58,10 +59,13 @@ pub enum RadioMessage {
         id: String,
         long_name: String,
         short_name: String,
+        lat: Option<f64>,
+        lon: Option<f64>,
     },
     ConfigComplete(u32),
     Rebooted,
     Text { from: u32, packet_id: u32, body: String },
+    Position { from: u32, lat: f64, lon: f64 },
 }
 
 pub fn decode_from_radio(buf: &[u8]) -> Option<RadioMessage> {
@@ -83,7 +87,7 @@ pub fn decode_from_radio(buf: &[u8]) -> Option<RadioMessage> {
         return Some(RadioMessage::Rebooted);
     }
     if let Some(bytes) = field_bytes(&fields, 2) {
-        return decode_text(bytes);
+        return decode_packet(bytes);
     }
     None
 }
@@ -101,32 +105,59 @@ fn decode_node(buf: &[u8]) -> Option<RadioMessage> {
             short_name = field_string(&user_fields, 3);
         }
     }
+    let position = field_bytes(&fields, 3).and_then(position_of);
     Some(RadioMessage::Node {
         num,
         id,
         long_name,
         short_name,
+        lat: position.map(|fix| fix.0),
+        lon: position.map(|fix| fix.1),
     })
 }
 
-fn decode_text(buf: &[u8]) -> Option<RadioMessage> {
+fn decode_packet(buf: &[u8]) -> Option<RadioMessage> {
     let fields = read_fields(buf)?;
     let from = field_fixed32(&fields, 1).unwrap_or(0);
     let packet_id = field_fixed32(&fields, 6).unwrap_or(0);
     let data = field_bytes(&fields, 4)?;
     let data_fields = read_fields(data)?;
-    if field_varint(&data_fields, 1)? as u32 != TEXT_MESSAGE_APP {
+    let port = field_varint(&data_fields, 1)? as u32;
+    let payload = field_bytes(&data_fields, 2).unwrap_or(b"");
+    match port {
+        TEXT_MESSAGE_APP => {
+            let body = String::from_utf8_lossy(payload).trim_matches('\0').to_string();
+            if body.is_empty() {
+                return None;
+            }
+            Some(RadioMessage::Text {
+                from,
+                packet_id,
+                body,
+            })
+        }
+        POSITION_APP => {
+            let (lat, lon) = position_of(payload)?;
+            Some(RadioMessage::Position { from, lat, lon })
+        }
+        _ => None,
+    }
+}
+
+/// Meshtastic Position: latitude_i and longitude_i are degrees times 1e7.
+fn position_of(buf: &[u8]) -> Option<(f64, f64)> {
+    let fields = read_fields(buf)?;
+    let lat_i = field_fixed32(&fields, 1)? as i32;
+    let lon_i = field_fixed32(&fields, 2)? as i32;
+    if lat_i == 0 && lon_i == 0 {
         return None;
     }
-    let body = field_string(&data_fields, 2);
-    if body.is_empty() {
+    let lat = f64::from(lat_i) / 1e7;
+    let lon = f64::from(lon_i) / 1e7;
+    if !(-85.0..=85.0).contains(&lat) || !(-180.0..=180.0).contains(&lon) {
         return None;
     }
-    Some(RadioMessage::Text {
-        from,
-        packet_id,
-        body,
-    })
+    Some((lat, lon))
 }
 
 #[derive(Debug, Default)]
@@ -383,6 +414,31 @@ mod tests {
                 assert_eq!(from, 7);
                 assert_eq!(packet_id, 9);
                 assert_eq!(body, "holding");
+            }
+            other => panic!("unexpected {other:?}"),
+        }
+    }
+
+    #[test]
+    fn position_packet_decodes_degrees() {
+        let lat_i = (-27.47_f64 * 1e7).round() as i32;
+        let lon_i = (153.02_f64 * 1e7).round() as i32;
+        let mut pos = Vec::new();
+        write_fixed32_field(&mut pos, 1, lat_i as u32);
+        write_fixed32_field(&mut pos, 2, lon_i as u32);
+        let mut data = Vec::new();
+        write_varint_field(&mut data, 1, u64::from(POSITION_APP));
+        write_len_field(&mut data, 2, &pos);
+        let mut packet = Vec::new();
+        write_fixed32_field(&mut packet, 1, 11);
+        write_len_field(&mut packet, 4, &data);
+        let mut wrapped = Vec::new();
+        write_len_field(&mut wrapped, 2, &packet);
+        match decode_from_radio(&wrapped) {
+            Some(RadioMessage::Position { from, lat, lon }) => {
+                assert_eq!(from, 11);
+                assert!((lat + 27.47).abs() < 1e-5, "{lat}");
+                assert!((lon - 153.02).abs() < 1e-5, "{lon}");
             }
             other => panic!("unexpected {other:?}"),
         }

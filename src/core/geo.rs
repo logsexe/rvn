@@ -38,6 +38,25 @@ fn sub_char(n: u8) -> char {
     char::from(b'a' + n.min(23))
 }
 
+/// Initial great-circle bearing in degrees, 0–360, clockwise from north.
+pub fn bearing_deg(lat1: f64, lon1: f64, lat2: f64, lon2: f64) -> f64 {
+    let lat1 = lat1.to_radians();
+    let lat2 = lat2.to_radians();
+    let dlon = (lon2 - lon1).to_radians();
+    let y = dlon.sin() * lat2.cos();
+    let x = lat1.cos() * lat2.sin() - lat1.sin() * lat2.cos() * dlon.cos();
+    (y.atan2(x).to_degrees() + 360.0) % 360.0
+}
+
+/// A field distance: metres under a kilometre, kilometres after that.
+pub fn range_text(metres: f64) -> String {
+    if metres < 1000.0 {
+        format!("{metres:.0} m")
+    } else {
+        format!("{:.1} km", metres / 1000.0)
+    }
+}
+
 /// Great-circle distance in metres.
 pub fn haversine_m(lat1: f64, lon1: f64, lat2: f64, lon2: f64) -> f64 {
     const R: f64 = 6_371_000.0;
@@ -67,5 +86,19 @@ mod tests {
     #[test]
     fn same_point_is_zero() {
         assert!(haversine_m(-27.47, 153.02, -27.47, 153.02) < 0.01);
+    }
+
+    #[test]
+    fn north_and_east_bearings() {
+        let north = bearing_deg(0.0, 0.0, 1.0, 0.0);
+        let east = bearing_deg(0.0, 0.0, 0.0, 1.0);
+        assert!(north < 1.0 || north > 359.0, "{north}");
+        assert!((east - 90.0).abs() < 1.0, "{east}");
+    }
+
+    #[test]
+    fn range_switches_at_a_kilometre() {
+        assert_eq!(range_text(840.0), "840 m");
+        assert_eq!(range_text(2400.0), "2.4 km");
     }
 }

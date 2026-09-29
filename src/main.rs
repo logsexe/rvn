@@ -2,8 +2,9 @@ mod adapters;
 mod core;
 mod surfaces;
 
+use std::collections::VecDeque;
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use anyhow::Result;
 use chrono::Local;
@@ -14,11 +15,15 @@ use tracing_subscriber::EnvFilter;
 use adapters::{boot, Platform};
 use core::bands::{au_notes, band_choices};
 use core::hardware::{PowerSource, Readiness};
+use core::store::{self, Operation};
 use core::{AppState, Surface};
 use surfaces::mapview::{MapImage, MapView};
 use surfaces::run_line;
 
 slint::include_modules!();
+
+const FALL_ROWS: usize = 36;
+const FALL_BINS: usize = 48;
 
 #[derive(Clone)]
 struct LiveControls {
@@ -48,14 +53,39 @@ fn main() -> Result<()> {
     let platform = boot();
     let map = Arc::new(Mutex::new(MapView::new()));
     let map_viewport = Arc::new(Mutex::new((640.0_f32, 360.0_f32)));
-    let controls = Arc::new(Mutex::new(LiveControls::default()));
-    platform.set_radio_freq(433.0);
-    platform.set_radio_streaming(false);
-    let state = Arc::new(Mutex::new(AppState {
+    let saved = store::load(&store::operation_path());
+    let mut boot_controls = LiveControls::default();
+    let mut boot_state = AppState {
         clock: Local::now().format("%H:%M:%S").to_string(),
         platform: platform.poll(),
         ..AppState::default()
-    }));
+    };
+    if let Some(op) = &saved {
+        boot_state.waypoints = op.waypoints.clone();
+        boot_state.track = op.track.clone();
+        boot_state.track_points = op.track.len() as u32;
+        boot_state.selected_mark = op.selected_mark.clone();
+        boot_state.bookmarks = op.bookmarks.clone();
+        boot_state.mesh_messages = op.mesh_messages.clone();
+        boot_state.night = op.night;
+        if (24.0..=1700.0).contains(&op.radio_mhz) {
+            boot_controls.radio_freq_mhz = op.radio_mhz;
+        }
+        if op.map_zoom >= 2.0 {
+            map.lock()
+                .unwrap()
+                .restore(op.map_lat, op.map_lon, op.map_zoom, op.map_follow);
+        }
+    }
+    let controls = Arc::new(Mutex::new(boot_controls.clone()));
+    platform.set_radio_freq(boot_controls.radio_freq_mhz);
+    platform.set_radio_streaming(false);
+    let state = Arc::new(Mutex::new(boot_state));
+    let waterfall: Arc<Mutex<VecDeque<Vec<f32>>>> = Arc::new(Mutex::new(VecDeque::new()));
+    if saved.as_ref().is_some_and(|op| op.night) {
+        ui.set_night(true);
+    }
+    ui.set_radio_waterfall(waterfall_image(&VecDeque::new()));
 
     {
         let snap = state.lock().unwrap().clone();
@@ -70,7 +100,17 @@ fn main() -> Result<()> {
         let state = state.clone();
         let controls = controls.clone();
         let map = map.clone();
+        let waterfall = waterfall.clone();
         let mut seen_links: Vec<String> = Vec::new();
+        let mut seen_gps = false;
+        let mut seen_radio = false;
+        let mut seen_mesh = false;
+        let mut mesh_read = 0usize;
+        let mut last_saved = saved
+            .as_ref()
+            .and_then(|op| serde_json::to_string(op).ok())
+            .unwrap_or_default();
+        let mut dirty_at: Option<Instant> = None;
         ui_timer.start(TimerMode::Repeated, Duration::from_millis(500), move || {
             let Some(ui) = ui_weak.upgrade() else {
                 return;
@@ -99,17 +139,93 @@ fn main() -> Result<()> {
                 }
                 st.clone()
             };
-            {
+            let camera = {
                 let mut view = map.lock().unwrap();
                 view.set_marks(&snap.track, &mark_points(&snap));
+                view.set_goal(snap.goal());
+                let stations: Vec<(String, f64, f64)> = snap
+                    .platform
+                    .mesh
+                    .fixes
+                    .iter()
+                    .map(|fix| (fix.name.clone(), fix.lat, fix.lon))
+                    .collect();
+                view.set_stations(&stations);
                 if let (Some(lat), Some(lon)) =
                     (snap.platform.gps.latitude, snap.platform.gps.longitude)
                 {
                     view.note_fix(lat, lon);
                 }
-            }
+                view.camera()
+            };
             let ctrl = controls.lock().unwrap().clone();
             push_ui(&ui, &snap, &ctrl);
+            if ctrl.radio_streaming && !snap.platform.radio.scanning {
+                let mut rows = waterfall.lock().unwrap();
+                let mut bins = snap.platform.radio.spectrum.clone();
+                bins.resize(FALL_BINS, 0.0);
+                rows.push_back(bins);
+                while rows.len() > FALL_ROWS {
+                    rows.pop_front();
+                }
+            }
+            {
+                let rows = waterfall.lock().unwrap();
+                ui.set_radio_waterfall(waterfall_image(&rows));
+            }
+            let gps_up = snap.platform.gps.readiness != Readiness::NotPresent;
+            let radio_up = snap.platform.radio.readiness != Readiness::NotPresent;
+            let mesh_up = snap.platform.mesh.readiness != Readiness::NotPresent;
+            if gps_up {
+                seen_gps = true;
+            }
+            if radio_up {
+                seen_radio = true;
+            }
+            if mesh_up {
+                seen_mesh = true;
+            }
+            if ui.get_active_surface() == 2 {
+                mesh_read = snap.mesh_messages.len();
+            }
+            let unread = snap.mesh_messages.len().saturating_sub(mesh_read);
+            let mut lines = Vec::new();
+            if unread > 0 {
+                lines.push(format!("MESH · {unread} new"));
+            }
+            if snap.platform.gps.latitude.is_some() {
+                if let Some(age) = snap.platform.gps.age_ms {
+                    if age > 5_000 {
+                        lines.push(format!("NAV · fix {}s", age / 1000));
+                    }
+                }
+            }
+            if seen_gps && !gps_up {
+                lines.push("NAV · receiver removed".into());
+            }
+            if seen_radio && !radio_up {
+                lines.push("RADIO · receiver removed".into());
+            }
+            if seen_mesh && !mesh_up {
+                lines.push("MESH · radio removed".into());
+            }
+            lines.truncate(3);
+            ui.set_home_notice(lines.join("\n").into());
+            let op = operation_of(&snap, camera, ctrl.radio_freq_mhz);
+            let text = serde_json::to_string(&op).unwrap_or_default();
+            if text != last_saved {
+                if dirty_at.is_none() {
+                    dirty_at = Some(Instant::now());
+                }
+                if dirty_at.unwrap().elapsed() >= Duration::from_secs(2)
+                    && store::save(&store::operation_path(), &op)
+                {
+                    last_saved = text;
+                    dirty_at = None;
+                }
+            } else {
+                dirty_at = None;
+            }
         });
     }
 
@@ -380,6 +496,90 @@ fn main() -> Result<()> {
             push_ui(&ui, &snap, &ctrl);
         });
     }
+    {
+        let controls = controls.clone();
+        let state = state.clone();
+        let map = map.clone();
+        let ui_weak = ui.as_weak();
+        ui.on_nav_choose(move |id| {
+            let Some(ui) = ui_weak.upgrade() else {
+                return;
+            };
+            let snap = {
+                let mut st = state.lock().unwrap();
+                st.choose_mark(id.as_str());
+                info!("NAV guide {}", st.guide_text());
+                st.clone()
+            };
+            map.lock().unwrap().set_goal(snap.goal());
+            let ctrl = controls.lock().unwrap().clone();
+            push_ui(&ui, &snap, &ctrl);
+        });
+    }
+    {
+        let controls = controls.clone();
+        let state = state.clone();
+        let map = map.clone();
+        let ui_weak = ui.as_weak();
+        ui.on_nav_save_area(move || {
+            let Some(ui) = ui_weak.upgrade() else {
+                return;
+            };
+            let fix = {
+                let st = state.lock().unwrap();
+                match (st.platform.gps.latitude, st.platform.gps.longitude) {
+                    (Some(lat), Some(lon)) if st.platform.gps.readiness != Readiness::NotPresent => {
+                        Some((lat, lon))
+                    }
+                    _ => None,
+                }
+            };
+            let (lat, lon) = fix.unwrap_or_else(|| {
+                let (lat, lon, _, _) = map.lock().unwrap().camera();
+                (lat, lon)
+            });
+            let (queued, have) = map.lock().unwrap().save_area(lat, lon);
+            let snap = {
+                let mut st = state.lock().unwrap();
+                st.nav_notice = if queued > 0 {
+                    format!("SAVING {queued} TILES")
+                } else if have > 0 {
+                    "AREA ON DISK".into()
+                } else {
+                    "MAP CANNOT FETCH".into()
+                };
+                info!("NAV {}", st.nav_notice);
+                st.clone()
+            };
+            let ctrl = controls.lock().unwrap().clone();
+            push_ui(&ui, &snap, &ctrl);
+        });
+    }
+    {
+        let controls = controls.clone();
+        let state = state.clone();
+        let ui_weak = ui.as_weak();
+        ui.on_radio_keep(move |mhz, name| {
+            let Some(ui) = ui_weak.upgrade() else {
+                return;
+            };
+            let snap = {
+                let mut st = state.lock().unwrap();
+                st.keep_bookmark(name.as_str(), mhz);
+                info!("RADIO kept {} at {mhz:.3}", st.bookmarks.last().map(|m| m.name.as_str()).unwrap_or(""));
+                st.clone()
+            };
+            let ctrl = controls.lock().unwrap().clone();
+            push_ui(&ui, &snap, &ctrl);
+        });
+    }
+    {
+        let state = state.clone();
+        ui.on_night_toggled(move |on| {
+            state.lock().unwrap().night = on;
+            info!("night posture {}", if on { "on" } else { "off" });
+        });
+    }
 
     {
         let ui_weak = ui.as_weak();
@@ -419,16 +619,37 @@ fn main() -> Result<()> {
 
     load_band_lists(&ui);
     {
+        let snap = state.lock().unwrap().clone();
         let mut view = map.lock().unwrap();
         view.set_viewport(640.0, 360.0);
+        view.set_marks(&snap.track, &mark_points(&snap));
+        view.set_goal(snap.goal());
+        let stations: Vec<(String, f64, f64)> = snap
+            .platform
+            .mesh
+            .fixes
+            .iter()
+            .map(|fix| (fix.name.clone(), fix.lat, fix.lon))
+            .collect();
+        view.set_stations(&stations);
         if let Some(frame) = view.render() {
+            drop(view);
             ui.set_nav_map(map_image(&frame));
         }
+    }
+    {
+        let view = map.lock().unwrap();
         ui.set_nav_map_caption(view.caption().into());
         ui.set_nav_map_follow(view.following());
     }
 
     ui.run()?;
+    {
+        let snap = state.lock().unwrap().clone();
+        let mhz = controls.lock().unwrap().radio_freq_mhz;
+        let camera = map.lock().unwrap().camera();
+        let _ = store::save(&store::operation_path(), &operation_of(&snap, camera, mhz));
+    }
     Ok(())
 }
 
@@ -561,6 +782,7 @@ fn sync_ui(ui: &AppWindow, state: &AppState, ctrl: &LiveControls, spectrum: &[f3
             .into(),
     );
     ui.set_sys_throttled(p.power.throttled);
+    ui.set_sys_endurance(store::endurance_label(&store::data_dir()).into());
     ui.set_sys_gps_port(device_line(&p.gps.device, &p.gps.label).into());
     ui.set_sys_gps_readiness(p.gps.readiness.as_status_str().into());
     ui.set_sys_gps_fix(p.gps.fix.as_display().into());
@@ -629,6 +851,7 @@ fn sync_ui(ui: &AppWindow, state: &AppState, ctrl: &LiveControls, spectrum: &[f3
     ui.set_nav_tracking(state.tracking);
     ui.set_nav_track_count(state.track_points as i32);
     ui.set_nav_notice(state.nav_notice.clone().into());
+    ui.set_nav_guide(state.guide_text().into());
     ui.set_nav_waypoints(ModelRc::new(VecModel::from(waypoint_rows(state))));
 
     ui.set_radio_readiness(radio_status.into());
@@ -657,6 +880,17 @@ fn sync_ui(ui: &AppWindow, state: &AppState, ctrl: &LiveControls, spectrum: &[f3
             .map(|hit| ScanHit {
                 freq: format!("{:.3} MHz", hit.mhz).into(),
                 level: hit.power,
+                mhz: hit.mhz,
+            })
+            .collect::<Vec<_>>(),
+    )));
+    ui.set_radio_bookmarks(ModelRc::new(VecModel::from(
+        state
+            .bookmarks
+            .iter()
+            .map(|mark| BookmarkRow {
+                name: mark.name.clone().into(),
+                mhz: mark.mhz,
             })
             .collect::<Vec<_>>(),
     )));
@@ -697,13 +931,56 @@ fn waypoint_rows(state: &AppState) -> Vec<WaypointRow> {
         .waypoints
         .iter()
         .rev()
-        .take(12)
+        .take(40)
         .map(|wp| WaypointRow {
             name: wp.id.clone().into(),
             coords: format!("{:.5}   {:.5}", wp.lat, wp.lon).into(),
             marked: wp.marked_at.clone().into(),
+            selected: wp.id == state.selected_mark,
         })
         .collect()
+}
+
+fn operation_of(state: &AppState, camera: (f64, f64, f64, bool), mhz: f32) -> Operation {
+    Operation {
+        waypoints: state.waypoints.clone(),
+        track: state.track.clone(),
+        selected_mark: state.selected_mark.clone(),
+        map_lat: camera.0,
+        map_lon: camera.1,
+        map_zoom: camera.2,
+        map_follow: camera.3,
+        radio_mhz: mhz,
+        bookmarks: state.bookmarks.clone(),
+        mesh_messages: state.mesh_messages.clone(),
+        night: state.night,
+    }
+}
+
+fn waterfall_image(rows: &VecDeque<Vec<f32>>) -> slint::Image {
+    let width = FALL_BINS as u32;
+    let height = FALL_ROWS as u32;
+    let mut rgba = vec![0u8; FALL_BINS * FALL_ROWS * 4];
+    for px in rgba.chunks_exact_mut(4) {
+        px[0] = 12;
+        px[1] = 18;
+        px[2] = 24;
+        px[3] = 255;
+    }
+    let start = FALL_ROWS.saturating_sub(rows.len());
+    for (i, bins) in rows.iter().enumerate() {
+        let y = start + i;
+        for (x, sample) in bins.iter().take(FALL_BINS).enumerate() {
+            let t = sample.clamp(0.0, 1.0);
+            let index = (y * FALL_BINS + x) * 4;
+            rgba[index] = (12.0 + (94.0 - 12.0) * t) as u8;
+            rgba[index + 1] = (18.0 + (234.0 - 18.0) * t) as u8;
+            rgba[index + 2] = (24.0 + (212.0 - 24.0) * t) as u8;
+        }
+    }
+    let mut buffer = slint::SharedPixelBuffer::<slint::Rgba8Pixel>::new(width, height);
+    buffer.make_mut_bytes().copy_from_slice(&rgba);
+    slint::Image::from_rgba8(buffer)
 }
 
 fn mesh_rows(state: &AppState) -> Vec<MeshLine> {
