@@ -198,6 +198,8 @@ export component AppWindow inherits Window {
         }
 
     VerticalLayout {
+        width: 100%;
+        height: 100%;
         spacing: 0;
 
         TopBar {
@@ -209,11 +211,17 @@ export component AppWindow inherits Window {
         }
 
         Rectangle {
+            width: 100%;
             background: Theme.bg-void;
             vertical-stretch: 1;
 
             if active-surface == -1: Rectangle {
+                width: 100%;
+                height: 100%;
+
                 VerticalLayout {
+                    width: 100%;
+                    height: 100%;
                     padding: Theme.space-12;
                     spacing: Theme.space-12;
 
@@ -237,88 +245,116 @@ export component AppWindow inherits Window {
                         }
                     }
 
-                    GridLayout {
+                    HorizontalLayout {
                         spacing: Theme.space-12;
+                        preferred-height: 0px;
                         horizontal-stretch: 1;
                         vertical-stretch: 1;
 
-                        SurfaceTile {
-                            row: 0; col: 0;
-                            title: "NAV";
-                            subtitle: "Position · Tracks";
-                            glyph: "⌖";
-                            status: nav-status;
-                            clicked => { active-surface = 0; surface-selected(0); }
+                        Rectangle { min-width: 0px; min-height: 0px; preferred-width: 0px; preferred-height: 0px; horizontal-stretch: 1; vertical-stretch: 1;
+                            SurfaceTile {
+                                width: 100%; height: 100%;
+                                title: "NAV";
+                                subtitle: "Position · Tracks";
+                                glyph: "⌖";
+                                status: nav-status;
+                                clicked => { active-surface = 0; surface-selected(0); }
+                            }
                         }
-                        SurfaceTile {
-                            row: 0; col: 1;
-                            title: "RADIO";
-                            subtitle: "Spectrum · Receive";
-                            glyph: "◈";
-                            status: radio-status;
-                            clicked => { active-surface = 1; surface-selected(1); }
+                        Rectangle { min-width: 0px; min-height: 0px; preferred-width: 0px; preferred-height: 0px; horizontal-stretch: 1; vertical-stretch: 1;
+                            SurfaceTile {
+                                width: 100%; height: 100%;
+                                title: "RADIO";
+                                subtitle: "Spectrum · Receive";
+                                glyph: "◈";
+                                status: radio-status;
+                                clicked => { active-surface = 1; surface-selected(1); }
+                            }
                         }
-                        SurfaceTile {
-                            row: 0; col: 2;
-                            title: "MESH";
-                            subtitle: "Nodes · Messages";
-                            glyph: "⬡";
-                            status: mesh-card-status;
-                            clicked => { active-surface = 2; surface-selected(2); }
+                        Rectangle { min-width: 0px; min-height: 0px; preferred-width: 0px; preferred-height: 0px; horizontal-stretch: 1; vertical-stretch: 1;
+                            SurfaceTile {
+                                width: 100%; height: 100%;
+                                title: "MESH";
+                                subtitle: "Nodes · Messages";
+                                glyph: "⬡";
+                                status: mesh-card-status;
+                                clicked => { active-surface = 2; surface-selected(2); }
+                            }
                         }
-                        SurfaceTile {
-                            row: 1; col: 0;
-                            title: "TERMINAL";
-                            subtitle: "Operator Shell";
-                            glyph: ">_";
-                            status: terminal-status;
-                            clicked => { active-surface = 3; surface-selected(3); }
+                    }
+
+                    HorizontalLayout {
+                        spacing: Theme.space-12;
+                        preferred-height: 0px;
+                        horizontal-stretch: 1;
+                        vertical-stretch: 1;
+
+                        Rectangle { min-width: 0px; min-height: 0px; preferred-width: 0px; preferred-height: 0px; horizontal-stretch: 1; vertical-stretch: 1;
+                            SurfaceTile {
+                                width: 100%; height: 100%;
+                                title: "TERMINAL";
+                                subtitle: "Operator Shell";
+                                glyph: ">_";
+                                status: terminal-status;
+                                clicked => { active-surface = 3; surface-selected(3); }
+                            }
                         }
-                        SurfaceTile {
-                            row: 1; col: 1;
-                            title: "SYSTEM";
-                            subtitle: "Health · Modules";
-                            glyph: "▣";
-                            status: system-status;
-                            clicked => { active-surface = 4; surface-selected(4); }
+                        Rectangle { min-width: 0px; min-height: 0px; preferred-width: 0px; preferred-height: 0px; horizontal-stretch: 1; vertical-stretch: 1;
+                            SurfaceTile {
+                                width: 100%; height: 100%;
+                                title: "SYSTEM";
+                                subtitle: "Health · Modules";
+                                glyph: "▣";
+                                status: system-status;
+                                clicked => { active-surface = 4; surface-selected(4); }
+                            }
                         }
                         Rectangle {
-                            row: 1;
-                            col: 2;
-                            horizontal-stretch: 1;
-                            vertical-stretch: 1;
                             min-width: 0px;
                             min-height: 0px;
+                            preferred-width: 0px;
+                            preferred-height: 0px;
+                            horizontal-stretch: 1;
+                            vertical-stretch: 1;
+
+                            Rectangle {
+                            width: 100%;
+                            height: 100%;
                             border-radius: Theme.radius-lg;
                             border-width: 1px;
                             border-color: Theme.border;
                             background: Theme.bg-base;
+                            clip: true;
 
                             VerticalLayout {
+                                width: 100%;
+                                height: 100%;
                                 padding: 16px;
                                 spacing: 10px;
 
                                 Text {
                                     text: op-name;
+                                    width: 100%;
                                     font-size: 28px;
                                     font-weight: 600;
                                     color: Theme.text-primary;
                                     font-family: Theme.font-sans;
+                                    overflow: elide;
                                 }
 
                                 Text {
                                     text: home-notice != "" ? home-notice : "Five instruments share this shell. A missing module leaves its own tile quiet.";
+                                    width: 100%;
                                     font-size: 14px;
                                     color: home-notice != "" ? Theme.warn : Theme.text-muted;
                                     font-family: Theme.font-sans;
                                     wrap: word-wrap;
                                 }
 
-                                Rectangle { vertical-stretch: 1; }
+                                Rectangle { vertical-stretch: 1; min-height: 0px; }
 
                                 HorizontalLayout {
                                     spacing: 8px;
-                                    alignment: center;
 
                                     Text {
                                         text: "Listening first. Transmit when armed.";
@@ -327,6 +363,7 @@ export component AppWindow inherits Window {
                                         font-family: Theme.font-sans;
                                         vertical-alignment: center;
                                         horizontal-stretch: 1;
+                                        overflow: elide;
                                     }
 
                                     Rectangle {
@@ -361,12 +398,15 @@ export component AppWindow inherits Window {
                                     }
                                 }
                             }
+                            }
                         }
                     }
                 }
             }
 
             if active-surface == 0: NavSurface {
+                width: 100%;
+                height: 100%;
                 map-image: nav-map;
                 map-caption: nav-map-caption;
                 map-following: nav-map-follow;
@@ -400,6 +440,8 @@ export component AppWindow inherits Window {
             }
 
             if active-surface == 1: RadioSurface {
+                width: 100%;
+                height: 100%;
                 readiness: radio-readiness;
                 device: radio-device;
                 freq: radio-freq;
@@ -427,6 +469,8 @@ export component AppWindow inherits Window {
             }
 
             if active-surface == 2: MeshSurface {
+                width: 100%;
+                height: 100%;
                 readiness: mesh-readiness;
                 node-id: mesh-node-id;
                 nodes-heard: mesh-nodes-heard;
@@ -442,6 +486,8 @@ export component AppWindow inherits Window {
             }
 
             if active-surface == 3: term := TerminalSurface {
+                width: 100%;
+                height: 100%;
                 init => { term.focus-prompt(); }
                 output <=> term-output;
                 input <=> term-input;
@@ -453,6 +499,8 @@ export component AppWindow inherits Window {
             }
 
             if active-surface == 4: SystemSurface {
+                width: 100%;
+                height: 100%;
                 cpu-model: sys-cpu-model;
                 cpu-percent: sys-cpu-percent;
                 temp-c: sys-temp-c;

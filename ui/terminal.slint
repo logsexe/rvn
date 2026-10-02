@@ -41,10 +41,11 @@ export component TerminalSurface inherits Rectangle {
     background: Theme.bg-void;
 
     VerticalLayout {
-        padding: Theme.space-20;
-        spacing: Theme.space-12;
+        width: 100%;
+        height: 100%;
+        padding: Theme.space-12;
+        spacing: Theme.space-8;
 
-        // Header
         HorizontalLayout {
             spacing: Theme.space-12;
             alignment: center;
@@ -77,67 +78,84 @@ export component TerminalSurface inherits Rectangle {
                 vertical-alignment: center;
             }
 
+            Rectangle {
+                width: 64px;
+                height: 28px;
+                border-radius: Theme.radius-sm;
+                border-width: 1px;
+                border-color: Theme.border;
+                background: Theme.bg-panel;
+
+                Text {
+                    width: 100%;
+                    height: 100%;
+                    text: "CLEAR";
+                    font-size: 10px;
+                    font-weight: 600;
+                    color: Theme.text-muted;
+                    font-family: Theme.font-mono;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+                TouchArea {
+                    clicked => { root.clear-output(); }
+                    mouse-cursor: pointer;
+                }
+            }
+
             HomeButton { clicked => { root.close(); } }
         }
 
-        // Output viewport
         Rectangle {
+            vertical-stretch: 1;
             border-radius: Theme.radius-md;
             border-width: 1px;
             border-color: Theme.border;
             background: #04060a;
-            vertical-stretch: 1;
+            clip: true;
 
-            Flickable {
+            // One console. The prompt is the next line of text, and the view
+            // follows it only after the scrollback is taller than the screen.
+            scroll := Flickable {
                 width: 100%;
                 height: 100%;
                 content-width: self.width;
-                content-height: output-text.preferred-height + 24px;
+                property <length> body: prompt-label.y + prompt-label.height + 12px;
+                content-height: max(self.height, body);
+                content-y: -max(0px, body - self.height);
 
                 output-text := Text {
-                    x: 14px;
+                    x: 12px;
                     y: 12px;
-                    width: parent.width - 28px;
+                    width: scroll.width - 24px;
                     text: output == "" ? "RVN terminal ready.\nType help for commands.\n" : output;
-                    font-size: 13px;
+                    font-size: 14px;
                     font-family: Theme.font-mono;
                     color: Theme.text-primary;
                     wrap: word-wrap;
                 }
-            }
-        }
 
-        // Prompt row
-        Rectangle {
-            height: 44px;
-            border-radius: Theme.radius-sm;
-            border-width: 1px;
-            border-color: Theme.border-strong;
-            background: Theme.bg-panel;
-
-            HorizontalLayout {
-                padding-left: 12px;
-                padding-right: 8px;
-                spacing: 8px;
-                alignment: center;
-
-                Text {
-                    text: cwd + " ›";
-                    font-size: 13px;
-                    font-weight: 700;
+                prompt-label := Text {
+                    x: 12px;
+                    y: output-text.y + output-text.height;
+                    text: cwd + " › ";
+                    font-size: 14px;
                     color: Theme.accent;
                     font-family: Theme.font-mono;
                     vertical-alignment: center;
                 }
 
                 input-field := TextInput {
+                    x: prompt-label.x + prompt-label.width;
+                    y: prompt-label.y;
+                    width: max(0px, scroll.width - self.x - 12px);
+                    height: prompt-label.height;
                     text <=> root.input;
-                    font-size: 13px;
+                    font-size: 14px;
                     font-family: Theme.font-mono;
                     color: Theme.text-primary;
+                    vertical-alignment: center;
                     single-line: true;
-                    horizontal-stretch: 1;
-                    vertical-stretch: 1;
                     enabled: !busy;
 
                     accepted => {
@@ -154,40 +172,7 @@ export component TerminalSurface inherits Rectangle {
                         return reject;
                     }
                 }
-
-                // Clear button
-                Rectangle {
-                    width: 64px;
-                    height: 28px;
-                    border-radius: Theme.radius-sm;
-                    border-width: 1px;
-                    border-color: Theme.border;
-                    background: Theme.bg-base;
-
-                    Text {
-                        width: 100%; height: 100%;
-                        text: "CLEAR";
-                        font-size: 10px;
-                        font-weight: 600;
-                        color: Theme.text-muted;
-                        font-family: Theme.font-mono;
-                        horizontal-alignment: center;
-                        vertical-alignment: center;
-                    }
-                    TouchArea {
-                        clicked => { root.clear-output(); }
-                        mouse-cursor: pointer;
-                    }
-                }
             }
-        }
-
-        // Hint strip
-        Text {
-            text: "Enter submits · help lists commands · clear resets scrollback";
-            font-size: 11px;
-            color: Theme.text-faint;
-            font-family: Theme.font-sans;
         }
     }
 
